@@ -1104,6 +1104,39 @@ h1 {
   padding: 18px 20px;
 }
 
+.course-empty {
+  display: grid;
+  min-height: 260px;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.course-empty .material-symbols-outlined {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--mint);
+  color: var(--green);
+}
+
+.course-empty strong {
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.course-empty p {
+  max-width: 280px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .course-row {
   position: relative;
   display: grid;
