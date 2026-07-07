@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onUnmounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import MindMapRenderer from '../components/MindMapRenderer.vue';
 import { generateMindMap } from '../data/mockApi';
 import { getCourse, notify } from '../data/mockStore';
 
@@ -15,8 +16,23 @@ const currentStep = ref(-1);
 const mindMap = ref(null);
 const activeNodeId = ref('root');
 const revealedNodeCount = ref(0);
+const editingMindMap = ref(false);
+const editableMarkdown = ref('');
+const selectedBranchLabel = ref('');
+const newBranchTitle = ref('');
+const renameBranchTitle = ref('');
+const agentDraft = ref('');
+const agentSending = ref(false);
+const agentError = ref('');
+const agentMessages = ref([
+  {
+    role: 'assistant',
+    content: '可以告诉我你希望怎样调整这张思维导图，我会结合当前会话回复；需要更新导图时会同步到画布。'
+  }
+]);
 let stepTimer = 0;
 let revealTimer = 0;
+let agentTypingTimer = 0;
 
 const fallbackSources = [
   { id: 'src-1', title: '二次函数图像与性质教材节选', type: '教材资料', status: '已引用', evidence: 42 },
@@ -31,36 +47,22 @@ const generationSteps = [
   '合并学生薄弱点',
   '生成可编辑思维导图'
 ];
-
 const sources = computed(() => mindMap.value?.sources || fallbackSources);
 const nodes = computed(() => mindMap.value?.nodes || []);
 const nodeLayout = {
-  root: { x: 50, y: 50, side: 'center', level: 0, order: 0 },
-  definition: { x: 33, y: 31, side: 'left', level: 1, order: 1 },
-  intersection: { x: 16, y: 22, side: 'left', level: 2, order: 2 },
-  graph: { x: 31, y: 47, side: 'left', level: 1, order: 3 },
-  axis: { x: 33, y: 66, side: 'left', level: 1, order: 4 },
-  'mistake-axis': { x: 17, y: 76, side: 'left', level: 2, order: 5 },
-  square: { x: 67, y: 29, side: 'right', level: 1, order: 6 },
-  teaching: { x: 80, y: 20, side: 'right', level: 2, order: 7 },
-  monotonic: { x: 68, y: 45, side: 'right', level: 1, order: 8 },
-  opening: { x: 83, y: 38, side: 'right', level: 2, order: 9 },
-  vertex: { x: 67, y: 63, side: 'right', level: 1, order: 10 },
-  'mistake-square': { x: 84, y: 76, side: 'right', level: 2, order: 11 }
+  root: { order: 0 },
+  definition: { order: 1 },
+  intersection: { order: 2 },
+  graph: { order: 3 },
+  axis: { order: 4 },
+  'mistake-axis': { order: 5 },
+  square: { order: 6 },
+  teaching: { order: 7 },
+  monotonic: { order: 8 },
+  opening: { order: 9 },
+  vertex: { order: 10 },
+  'mistake-square': { order: 11 }
 };
-const mindTreeLinks = [
-  ['root', 'definition'],
-  ['definition', 'intersection'],
-  ['root', 'graph'],
-  ['root', 'axis'],
-  ['axis', 'mistake-axis'],
-  ['root', 'square'],
-  ['square', 'teaching'],
-  ['root', 'monotonic'],
-  ['monotonic', 'opening'],
-  ['root', 'vertex'],
-  ['vertex', 'mistake-square']
-];
 const orderedNodes = computed(() => (
   nodes.value
     .filter((node) => nodeLayout[node.id])
@@ -72,41 +74,225 @@ const visibleNodes = computed(() => (
     ? orderedNodes.value.slice(0, revealedNodeCount.value)
     : []
 ));
-const activeNode = computed(() => visibleNodes.value.find((node) => node.id === activeNodeId.value) || visibleNodes.value[0] || null);
-const links = computed(() => {
-  if (!mindMap.value) return [];
-  return mindTreeLinks
-    .map(([from, to]) => ({
-      from: visibleNodes.value.find((node) => node.id === from),
-      to: visibleNodes.value.find((node) => node.id === to)
-    }))
-    .filter((link) => link.from && link.to);
+const renderedMarkdown = computed(() => {
+  const markdown = mindMap.value?.markdown || '';
+  if (!markdown) return '';
+  if (generated.value) return markdown;
+  const lines = markdown.split('\n');
+  const ratio = orderedNodes.value.length
+    ? revealedNodeCount.value / orderedNodes.value.length
+    : 0;
+  const count = Math.max(1, Math.ceil(lines.length * ratio));
+  return lines.slice(0, count).join('\n');
 });
+const displayMarkdown = computed(() => (
+  editingMindMap.value ? editableMarkdown.value : renderedMarkdown.value
+));
+const currentMarkdown = computed(() => mindMap.value?.markdown || '');
+const markdownBranches = computed(() => parseMarkdownBranches(mindMap.value?.markdown || ''));
+const selectedBranch = computed(() => {
+  const selected = normalizeBranchLabel(selectedBranchLabel.value);
+  if (!selected) return null;
+  return markdownBranches.value.find((branch) => normalizeBranchLabel(branch.title) === selected) || null;
+});
+const activeNode = computed(() => visibleNodes.value.find((node) => node.id === activeNodeId.value) || visibleNodes.value[0] || null);
 const loadingMessage = computed(() => generationSteps[Math.max(0, currentStep.value)] || generationSteps[0]);
 
-function linkPath(link) {
-  const dir = link.to.side === 'left' ? -1 : 1;
-  const fromPad = link.from.level === 0 ? 8 : 6;
-  const toPad = link.to.level === 1 ? 7 : 5;
-  const startX = link.from.x + dir * fromPad;
-  const startY = link.from.y;
-  const endX = link.to.x + dir * toPad;
-  const endY = link.to.y;
-  const jointX = startX + dir * Math.min(9, Math.max(5, Math.abs(endX - startX) * .32));
-  const turnX = jointX + dir * 5;
-
-  return [
-    `M ${startX} ${startY}`,
-    `H ${jointX}`,
-    `C ${jointX} ${startY}, ${jointX} ${endY}, ${turnX} ${endY}`,
-    `H ${endX}`
-  ].join(' ');
+function normalizeBranchLabel(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .replace(/^#+\s*/, '')
+    .trim();
 }
 
+function parseMarkdownBranches(markdown) {
+  return String(markdown || '')
+    .split('\n')
+    .map((line, index) => {
+      const match = /^(#{1,6})\s+(.+?)\s*$/.exec(line);
+      if (!match) return null;
+      return {
+        index,
+        level: match[1].length,
+        title: match[2].trim()
+      };
+    })
+    .filter(Boolean);
+}
+
+function findSubtreeEnd(lines, branch) {
+  let end = lines.length;
+  for (let index = branch.index + 1; index < lines.length; index += 1) {
+    const match = /^(#{1,6})\s+/.exec(lines[index]);
+    if (match && match[1].length <= branch.level) {
+      end = index;
+      break;
+    }
+  }
+  return end;
+}
+
+function updateMindMapMarkdown(nextMarkdown, message) {
+  if (!mindMap.value) return;
+  const normalized = nextMarkdown.trim();
+  mindMap.value = {
+    ...mindMap.value,
+    markdown: normalized
+  };
+  editableMarkdown.value = normalized;
+  generated.value = true;
+  editingMindMap.value = false;
+  notify(message);
+}
+
+function buildBranchLine(level, title) {
+  return `${'#'.repeat(Math.min(Math.max(level, 1), 6))} ${title.trim()}`;
+}
+
+function extractMindMapBlock(content) {
+  const match = String(content || '').match(/:::mindmap\s*([\s\S]*?):::/i);
+  return match ? match[1].trim() : '';
+}
+
+function stripMindMapBlock(content) {
+  return String(content || '').replace(/:::mindmap\s*[\s\S]*?:::/i, '').trim();
+}
+
+function streamAgentReply(messageIndex, content) {
+  window.clearInterval(agentTypingTimer);
+  const fullContent = String(content || '');
+  return new Promise((resolve) => {
+    if (!fullContent) {
+      agentMessages.value = agentMessages.value.map((message, index) => (
+        index === messageIndex
+          ? { ...message, content: '', isStreaming: false }
+          : message
+      ));
+      resolve();
+      return;
+    }
+
+    let cursor = 0;
+    agentMessages.value = agentMessages.value.map((message, index) => (
+      index === messageIndex
+        ? { ...message, content: '', isStreaming: true }
+        : message
+    ));
+    agentTypingTimer = window.setInterval(() => {
+      cursor = Math.min(fullContent.length, cursor + 2);
+      agentMessages.value = agentMessages.value.map((message, index) => (
+        index === messageIndex
+          ? { ...message, content: fullContent.slice(0, cursor), isStreaming: cursor < fullContent.length }
+          : message
+      ));
+      if (cursor >= fullContent.length) {
+        window.clearInterval(agentTypingTimer);
+        agentTypingTimer = 0;
+        resolve();
+      }
+    }, 24);
+  });
+}
+
+async function sendMindMapAgentMessage() {
+  const content = agentDraft.value.trim();
+  if (!content || agentSending.value) return;
+
+  const nextMessages = [
+    ...agentMessages.value,
+    { role: 'user', content }
+  ];
+  const assistantMessageIndex = nextMessages.length;
+
+  window.clearInterval(agentTypingTimer);
+  agentMessages.value = [
+    ...nextMessages,
+    { role: 'assistant', content: 'Thinking...', isStreaming: true }
+  ];
+  agentDraft.value = '';
+  agentError.value = '';
+  agentSending.value = true;
+
+  try {
+    const response = await fetch('/api/mindmap-agent', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        course: {
+          id: course.value.id,
+          title: course.value.title,
+          shortTitle: course.value.shortTitle
+        },
+        currentMarkdown: currentMarkdown.value,
+        messages: nextMessages
+      })
+    });
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.error || 'AI 导图智能体请求失败');
+    }
+
+    const replyContent = String(result.content || result.markdown || '').trim();
+    const mindMapMarkdown = extractMindMapBlock(replyContent) || (
+      String(result.markdown || '').trim().startsWith('#') ? String(result.markdown || '').trim() : ''
+    );
+    const visibleReply = stripMindMapBlock(replyContent) || (
+      mindMapMarkdown ? '已生成新的思维导图，并同步到画布。' : replyContent
+    ) || '我已经收到，会继续结合当前会话处理。';
+
+    await streamAgentReply(assistantMessageIndex, visibleReply);
+
+    if (!mindMapMarkdown) {
+      return;
+    }
+
+    if (!mindMapMarkdown.startsWith('#')) {
+      throw new Error('AI 返回的导图块不是可渲染的 Markdown 导图');
+    }
+
+    if (mindMap.value) {
+      updateMindMapMarkdown(mindMapMarkdown, 'AI 导图已更新');
+    } else {
+      mindMap.value = {
+        id: `mindmap-agent-${Date.now()}`,
+        title: course.value.shortTitle || 'AI 思维导图',
+        courseId: courseId.value,
+        markdown: mindMapMarkdown,
+        sources: fallbackSources,
+        nodes: []
+      };
+      editableMarkdown.value = mindMapMarkdown;
+      revealedNodeCount.value = orderedNodes.value.length;
+      generated.value = true;
+      notify('AI 导图已生成');
+    }
+  } catch (error) {
+    agentError.value = error instanceof Error ? error.message : 'AI 导图智能体请求失败';
+    window.clearInterval(agentTypingTimer);
+    agentTypingTimer = 0;
+    agentMessages.value = [
+      ...nextMessages,
+      {
+        role: 'assistant',
+        content: '本次请求失败，请检查本地 DeepSeek 配置后重试。'
+      }
+    ];
+  } finally {
+    agentSending.value = false;
+  }
+}
 async function startGeneration() {
   if (generating.value) return;
   generated.value = false;
   generating.value = true;
+  editingMindMap.value = false;
+  editableMarkdown.value = '';
+  selectedBranchLabel.value = '';
+  newBranchTitle.value = '';
+  renameBranchTitle.value = '';
   currentStep.value = 0;
   activeNodeId.value = 'root';
   mindMap.value = null;
@@ -118,6 +304,7 @@ async function startGeneration() {
   }, 720);
   const result = await generateMindMap(courseId.value);
   mindMap.value = result.mindMap;
+  editableMarkdown.value = result.mindMap.markdown || '';
   revealedNodeCount.value = 1;
   activeNodeId.value = 'root';
   revealTimer = window.setInterval(() => {
@@ -133,14 +320,110 @@ async function startGeneration() {
     currentStep.value = generationSteps.length - 1;
     generated.value = true;
     generating.value = false;
+    editableMarkdown.value = mindMap.value?.markdown || '';
     notify('思维导图已生成');
   }, 2200);
+}
+
+function openMindMapEditor() {
+  if (!mindMap.value?.markdown || generating.value) return;
+  editableMarkdown.value = mindMap.value.markdown;
+  editingMindMap.value = true;
+}
+
+function cancelMindMapEdit() {
+  editableMarkdown.value = mindMap.value?.markdown || '';
+  editingMindMap.value = false;
+}
+
+function applyMindMapEdit() {
+  if (!mindMap.value) return;
+  mindMap.value = {
+    ...mindMap.value,
+    markdown: editableMarkdown.value
+  };
+  generated.value = true;
+  editingMindMap.value = false;
+  notify('思维导图已更新');
+}
+
+function selectRenderedBranch(payload) {
+  const label = normalizeBranchLabel(payload?.label);
+  if (!label) return;
+  selectedBranchLabel.value = label;
+  renameBranchTitle.value = label;
+  newBranchTitle.value = '';
+  const matchedNode = visibleNodes.value.find((node) => normalizeBranchLabel(node.label) === label);
+  if (matchedNode) {
+    activeNodeId.value = matchedNode.id;
+  }
+}
+
+function addChildBranch() {
+  const branch = selectedBranch.value;
+  const title = newBranchTitle.value.trim();
+  if (!branch || !title || !mindMap.value?.markdown) return;
+  const childLevel = branch.level + 1;
+  if (childLevel > 6) {
+    notify('当前节点层级已达到上限');
+    return;
+  }
+  const lines = mindMap.value.markdown.split('\n');
+  const insertIndex = findSubtreeEnd(lines, branch);
+  lines.splice(insertIndex, 0, buildBranchLine(childLevel, title));
+  selectedBranchLabel.value = title;
+  renameBranchTitle.value = title;
+  newBranchTitle.value = '';
+  updateMindMapMarkdown(lines.join('\n'), '已添加子分支');
+}
+
+function addSiblingBranch() {
+  const branch = selectedBranch.value;
+  const title = newBranchTitle.value.trim();
+  if (!branch || !title || !mindMap.value?.markdown) return;
+  if (branch.level === 1) {
+    notify('根节点下请使用添加子分支');
+    return;
+  }
+  const lines = mindMap.value.markdown.split('\n');
+  const insertIndex = findSubtreeEnd(lines, branch);
+  lines.splice(insertIndex, 0, buildBranchLine(branch.level, title));
+  selectedBranchLabel.value = title;
+  renameBranchTitle.value = title;
+  newBranchTitle.value = '';
+  updateMindMapMarkdown(lines.join('\n'), '已添加同级分支');
+}
+
+function renameSelectedBranch() {
+  const branch = selectedBranch.value;
+  const title = renameBranchTitle.value.trim();
+  if (!branch || !title || !mindMap.value?.markdown) return;
+  const lines = mindMap.value.markdown.split('\n');
+  lines[branch.index] = buildBranchLine(branch.level, title);
+  selectedBranchLabel.value = title;
+  renameBranchTitle.value = title;
+  updateMindMapMarkdown(lines.join('\n'), '节点名称已更新');
+}
+
+function deleteSelectedBranch() {
+  const branch = selectedBranch.value;
+  if (!branch || !mindMap.value?.markdown) return;
+  if (branch.level === 1) {
+    notify('根节点不能删除');
+    return;
+  }
+  const lines = mindMap.value.markdown.split('\n');
+  const endIndex = findSubtreeEnd(lines, branch);
+  lines.splice(branch.index, endIndex - branch.index);
+  selectedBranchLabel.value = '';
+  renameBranchTitle.value = '';
+  newBranchTitle.value = '';
+  updateMindMapMarkdown(lines.join('\n'), '已删除该分支');
 }
 
 function selectNode(nodeId) {
   activeNodeId.value = nodeId;
 }
-
 function goBack() {
   router.push(`/preclass/courses/${course.value.id}/workspace`);
 }
@@ -148,6 +431,7 @@ function goBack() {
 onUnmounted(() => {
   window.clearInterval(stepTimer);
   window.clearInterval(revealTimer);
+  window.clearInterval(agentTypingTimer);
 });
 </script>
 
@@ -213,56 +497,96 @@ onUnmounted(() => {
             <em>{{ source.evidence }}</em>
           </article>
         </div>
-        <section class="mind-source-summary">
-          <span>Evidence 覆盖</span>
-          <strong>92%</strong>
-          <i><b></b></i>
+        <section class="mind-detail-card node-edit-panel">
+          <span class="small-chip">
+            <span class="material-symbols-outlined">ads_click</span>
+            节点编辑
+          </span>
+          <template v-if="selectedBranch">
+            <h2>{{ selectedBranch.title }}</h2>
+            <p>已选中当前导图节点，可直接添加分支、重命名或删除，系统会自动同步到底层大纲并重新渲染。</p>
+            <label class="node-edit-field">
+              <span>新分支名称</span>
+              <input v-model="newBranchTitle" type="text" placeholder="例如：参数变化规律" @keyup.enter="addChildBranch" />
+            </label>
+            <div class="node-edit-actions">
+              <button class="mind-primary" type="button" :disabled="!newBranchTitle.trim()" @click="addChildBranch">
+                <span class="material-symbols-outlined">account_tree</span>
+                添加子分支
+              </button>
+              <button class="mind-btn" type="button" :disabled="!newBranchTitle.trim() || selectedBranch.level === 1" @click="addSiblingBranch">
+                <span class="material-symbols-outlined">add</span>
+                添加同级
+              </button>
+            </div>
+            <label class="node-edit-field">
+              <span>节点名称</span>
+              <input v-model="renameBranchTitle" type="text" @keyup.enter="renameSelectedBranch" />
+            </label>
+            <div class="node-edit-actions">
+              <button class="mind-btn" type="button" :disabled="!renameBranchTitle.trim()" @click="renameSelectedBranch">
+                <span class="material-symbols-outlined">drive_file_rename_outline</span>
+                重命名
+              </button>
+              <button class="mind-danger" type="button" :disabled="selectedBranch.level === 1" @click="deleteSelectedBranch">
+                <span class="material-symbols-outlined">delete</span>
+                删除分支
+              </button>
+            </div>
+          </template>
+          <template v-else>
+            <h2>{{ generated ? '点击导图节点开始编辑' : '尚未生成' }}</h2>
+            <p>{{ generated ? '选择任一节点后，可以在这里添加子分支、添加同级分支、重命名或删除。' : '生成完成后，点击导图上的任一节点即可进行可视化编辑。' }}</p>
+          </template>
         </section>
       </aside>
 
       <section class="mind-canvas-panel">
         <div class="mind-canvas-head">
-          <div>
+          <div class="mind-canvas-titleline">
             <span class="small-chip">
               <span class="material-symbols-outlined">hub</span>
               AI MindMap
             </span>
             <h2>{{ mindMap?.title || '等待生成思维导图' }}</h2>
           </div>
-          <button class="mind-generate" type="button" :disabled="generating" @click="startGeneration">
-            <span class="material-symbols-outlined" :class="{ spinning: generating }">{{ generating ? 'progress_activity' : 'auto_awesome' }}</span>
-            {{ generating ? '正在生成...' : generated ? '重新生成导图' : 'AI 生成思维导图' }}
-          </button>
+          <div class="mind-canvas-tools">
+            <button class="mind-btn mind-edit-toggle" type="button" :disabled="!generated || generating" @click="openMindMapEditor">
+              <span class="material-symbols-outlined">edit_note</span>
+              编辑导图
+            </button>
+            <button class="mind-generate" type="button" :disabled="generating" @click="startGeneration">
+              <span class="material-symbols-outlined" :class="{ spinning: generating }">{{ generating ? 'progress_activity' : 'auto_awesome' }}</span>
+              {{ generating ? '正在生成...' : generated ? '重新生成导图' : 'AI 生成思维导图' }}
+            </button>
+          </div>
         </div>
 
-        <div class="mind-canvas" :class="{ generated, generating }">
-          <template v-if="mindMap && visibleNodes.length">
-            <svg class="mind-links" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-              <path
-                v-for="(link, index) in links"
-                :key="`${link.from.id}-${link.to.id}-${index}`"
-                :class="link.to.side"
-                :d="linkPath(link)"
-              />
-            </svg>
-            <button
-              v-for="node in visibleNodes"
-              :key="node.id"
-              class="mind-node"
-              :class="[node.type, node.side, `level-${node.level}`, { active: activeNode?.id === node.id }]"
-              type="button"
-              :style="{ left: `${node.x}%`, top: `${node.y}%`, '--delay': `${node.order * 42}ms` }"
-              @click="selectNode(node.id)"
-            >
-              {{ node.label }}
-            </button>
+        <div class="mind-canvas" :class="{ generated, generating, editing: editingMindMap }">
+          <template v-if="mindMap && displayMarkdown">
+            <MindMapRenderer :markdown="displayMarkdown" @node-select="selectRenderedBranch" />
             <div v-if="generating" class="mind-stream-status">
               <span class="material-symbols-outlined spinning">progress_activity</span>
               <strong>{{ loadingMessage }}</strong>
               <em>{{ visibleNodes.length }} / {{ orderedNodes.length }}</em>
             </div>
+            <aside v-if="editingMindMap" class="mind-edit-panel">
+              <header>
+                <span class="small-chip">
+                  <span class="material-symbols-outlined">edit_note</span>
+                  手动编辑
+                </span>
+                <button class="mind-icon-btn" type="button" aria-label="关闭编辑" @click="cancelMindMapEdit">
+                  <span class="material-symbols-outlined">close</span>
+                </button>
+              </header>
+              <textarea v-model="editableMarkdown" spellcheck="false" aria-label="思维导图 Markdown 大纲"></textarea>
+              <footer>
+                <button class="mind-btn" type="button" @click="cancelMindMapEdit">取消</button>
+                <button class="mind-primary" type="button" @click="applyMindMapEdit">应用修改</button>
+              </footer>
+            </aside>
           </template>
-
           <div v-else class="mind-empty">
             <span class="material-symbols-outlined" :class="{ spinning: generating }">{{ generating ? 'progress_activity' : 'account_tree' }}</span>
             <strong>{{ generating ? 'AI 正在生成导图' : '从课程资料生成第一版思维导图' }}</strong>
@@ -272,46 +596,38 @@ onUnmounted(() => {
       </section>
 
       <aside class="mind-side">
-        <section class="mind-progress-card">
-          <span class="small-chip">生成过程</span>
-          <div class="mind-step-list">
+        <section class="mind-agent-panel">
+          <header>
+            <span class="small-chip">
+              <span class="material-symbols-outlined">smart_toy</span>
+              AI 导图智能体
+            </span>
+            <em>{{ agentSending ? '生成中' : 'DeepSeek' }}</em>
+          </header>
+          <div class="mind-agent-feed">
             <article
-              v-for="(step, index) in generationSteps"
-              :key="step"
-              :class="{ done: generated || index < currentStep, active: generating && index === currentStep }"
+              v-for="(message, index) in agentMessages"
+              :key="`${message.role}-${index}`"
+              :class="[message.role, { streaming: message.isStreaming }]"
             >
-              <i>
-                <span v-if="generated || index < currentStep" class="material-symbols-outlined">check</span>
-                <b v-else>{{ index + 1 }}</b>
-              </i>
-              <strong>{{ step }}</strong>
+              <span>{{ message.role === 'user' ? '我' : 'AI' }}</span>
+              <p>{{ message.content }}</p>
             </article>
           </div>
+          <p v-if="agentError" class="mind-agent-error">{{ agentError }}</p>
+          <div class="mind-agent-input">
+            <textarea
+              v-model="agentDraft"
+              :disabled="agentSending"
+              placeholder="例如：把二次函数的易错点和配方法关系补充得更清楚"
+              @keydown.enter.exact.prevent="sendMindMapAgentMessage"
+            ></textarea>
+            <button class="mind-primary" type="button" :disabled="!agentDraft.trim() || agentSending" @click="sendMindMapAgentMessage">
+              <span class="material-symbols-outlined" :class="{ spinning: agentSending }">{{ agentSending ? 'progress_activity' : 'send' }}</span>
+              发送
+            </button>
+          </div>
         </section>
-
-        <section class="mind-detail-card">
-          <span class="small-chip">{{ activeNode ? '节点详情' : '导图详情' }}</span>
-          <template v-if="activeNode">
-            <h2>{{ activeNode.label }}</h2>
-            <p>{{ activeNode.detail }}</p>
-            <div class="mind-evidence">
-              <span v-for="item in activeNode.evidence" :key="item">{{ item }}</span>
-            </div>
-          </template>
-          <template v-else>
-            <h2>尚未生成</h2>
-            <p>生成完成后，点击任一节点可查看教学说明和引用来源。</p>
-          </template>
-        </section>
-
-        <div class="mind-next-actions">
-          <button class="mind-primary" type="button" :disabled="!generated" @click="router.push(`/preclass/courses/${course.id}/ppt`)">
-            用于生成 PPT
-          </button>
-          <button class="mind-btn" type="button" :disabled="!generated" @click="notify('已进入题目生成队列')">
-            生成配套题目
-          </button>
-        </div>
       </aside>
     </section>
   </main>
@@ -371,7 +687,8 @@ onUnmounted(() => {
 
 .mind-btn,
 .mind-primary,
-.mind-generate {
+.mind-generate,
+.mind-danger {
   display: inline-flex;
   height: 36px;
   align-items: center;
@@ -398,44 +715,22 @@ onUnmounted(() => {
   box-shadow: 0 12px 24px rgba(7, 52, 32, .16);
 }
 
+.mind-danger {
+  border: 0;
+  background: rgba(216, 111, 114, .13);
+  color: #b33b42;
+}
+
 .mind-btn:disabled,
 .mind-primary:disabled,
-.mind-generate:disabled {
+.mind-generate:disabled,
+.mind-danger:disabled {
   opacity: .52;
-}
-
-.mind-page .material-symbols-outlined {
-  position: relative;
-  display: inline-flex;
-  width: 20px;
-  min-width: 20px;
-  height: 20px;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  color: currentColor;
-  font-size: 0;
-  line-height: 1;
-}
-
-.mind-page .material-symbols-outlined::before {
-  content: "";
-  display: block;
-  width: 13px;
-  height: 13px;
-  border: 2px solid currentColor;
-  border-radius: 5px;
-  opacity: .85;
-}
-
-.mind-page .spinning::before {
-  border-radius: 50%;
-  border-right-color: transparent;
 }
 
 .mind-shell {
   display: grid;
-  grid-template-columns: 80px 280px minmax(0, 1fr) 330px;
+  grid-template-columns: 80px 320px minmax(0, 1fr) 360px;
   height: calc(100vh - var(--edu-topbar-h));
   min-height: 0;
 }
@@ -491,6 +786,16 @@ onUnmounted(() => {
   background: rgba(255, 255, 255, .54);
 }
 
+.mind-sources {
+  overflow-y: auto;
+  padding-bottom: 28px;
+  scrollbar-width: none;
+}
+
+.mind-sources::-webkit-scrollbar {
+  display: none;
+}
+
 .mind-sources header h2 {
   margin-top: 10px;
   font-family: var(--font-serif);
@@ -542,39 +847,6 @@ onUnmounted(() => {
   font-weight: 900;
 }
 
-.mind-source-summary {
-  display: grid;
-  gap: 10px;
-  margin-top: 20px;
-  border-top: 1px solid var(--line);
-  padding-top: 16px;
-}
-
-.mind-source-summary span {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.mind-source-summary strong {
-  font-family: var(--font-number);
-  font-size: 28px;
-}
-
-.mind-source-summary i {
-  height: 9px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(47, 172, 102, .12);
-}
-
-.mind-source-summary b {
-  display: block;
-  width: 92%;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--green);
-}
-
 .mind-canvas-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -591,149 +863,118 @@ onUnmounted(() => {
   margin-bottom: 14px;
 }
 
+.mind-canvas-titleline {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
 .mind-canvas-head h2 {
-  margin-top: 10px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-serif);
   font-size: 25px;
+}
+
+.mind-canvas-tools {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.mind-edit-toggle {
+  min-width: 104px;
 }
 
 .mind-canvas {
   position: relative;
   min-height: 0;
   overflow: hidden;
-  border: 1px solid var(--line);
+  border: 1px solid rgba(207, 221, 214, .9);
   border-radius: 18px;
   background:
-    linear-gradient(rgba(47, 172, 102, .07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(47, 172, 102, .07) 1px, transparent 1px),
-    rgba(255, 255, 255, .62);
+    linear-gradient(rgba(50, 120, 85, .055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(50, 120, 85, .055) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, .9), rgba(247, 252, 249, .74));
   background-size: 34px 34px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .86),
+    0 18px 46px rgba(20, 70, 45, .07);
 }
 
-.mind-links {
+.mind-canvas.editing :deep(.mm-renderer) {
+  right: min(390px, 42%);
+}
+
+.mind-edit-panel {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.mind-links path {
-  fill: none;
-  stroke-width: .34;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-dasharray: 170;
-  stroke-dashoffset: 170;
-  filter: drop-shadow(0 1px 2px rgba(10, 53, 34, .06));
-  animation: branch-draw .74s ease forwards;
-}
-
-.mind-links path.left {
-  stroke: rgba(36, 113, 163, .42);
-}
-
-.mind-links path.right {
-  stroke: rgba(47, 172, 102, .46);
-}
-
-.mind-node {
-  position: absolute;
-  z-index: 2;
-  display: inline-flex;
-  min-width: 112px;
-  min-height: 38px;
-  align-items: center;
-  justify-content: center;
-  transform: translate(-50%, -50%);
-  border: 1px solid rgba(47, 172, 102, .2);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, .96);
-  color: var(--ink);
-  padding: 0 15px;
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 0;
-  line-height: 1.25;
-  box-shadow: 0 12px 26px rgba(15, 40, 30, .1);
-  animation: node-pop .34s ease both;
-  animation-delay: var(--delay);
-  transition: transform .18s ease, border-color .18s ease, background .18s ease, color .18s ease;
-}
-
-.mind-node:hover,
-.mind-node.active {
-  transform: translate(-50%, -50%) scale(1.05);
-  border-color: var(--green);
-  background: var(--deep);
-  color: white;
-}
-
-.mind-node.level-0 {
-  min-width: 188px;
-  min-height: 70px;
-  border-radius: 18px;
-  background: linear-gradient(135deg, var(--deep), #136b45);
-  color: white;
-  padding: 0 22px;
-  font-size: 16px;
-  box-shadow: 0 20px 38px rgba(7, 52, 32, .22);
-}
-
-.mind-node.level-1 {
-  min-width: 148px;
-  min-height: 42px;
-  border-width: 2px;
-  font-size: 13px;
-}
-
-.mind-node.level-1.left {
-  border-color: rgba(36, 113, 163, .28);
-  background: #edf6ff;
-  color: #17527d;
-}
-
-.mind-node.level-1.right {
-  border-color: rgba(47, 172, 102, .28);
-  background: #eefaf3;
-  color: #0d6840;
-}
-
-.mind-node.level-2 {
-  min-width: 108px;
-  min-height: 32px;
-  border-radius: 8px;
+  top: 16px;
+  right: 16px;
+  bottom: 16px;
+  z-index: 4;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(360px, calc(100% - 32px));
+  overflow: hidden;
+  border: 1px solid rgba(47, 172, 102, .22);
+  border-radius: 16px;
   background: rgba(255, 255, 255, .92);
-  font-size: 11px;
+  box-shadow: 0 22px 46px rgba(11, 55, 35, .14);
+  backdrop-filter: blur(18px);
 }
 
-.mind-node.level-2.left {
-  border-color: rgba(36, 113, 163, .2);
-  color: #315f81;
+.mind-edit-panel header,
+.mind-edit-panel footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
 }
 
-.mind-node.level-2.right {
-  border-color: rgba(47, 172, 102, .22);
-  color: #26764e;
+.mind-edit-panel header {
+  border-bottom: 1px solid var(--line);
 }
 
-.mind-node.formula.level-1,
-.mind-node.formula.level-2 {
-  background: rgba(255, 246, 224, .96);
-  border-color: rgba(219, 154, 48, .28);
-  color: #8b5a13;
+.mind-edit-panel textarea {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: rgba(247, 252, 249, .82);
+  color: var(--ink);
+  padding: 14px 16px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.7;
 }
 
-.mind-node.weak-point.level-2 {
-  background: rgba(255, 239, 241, .98);
-  border-color: rgba(179, 59, 66, .24);
-  color: #b33b42;
+.mind-edit-panel footer {
+  border-top: 1px solid var(--line);
 }
 
-.mind-node.activity.level-2 {
-  background: rgba(227, 248, 237, .96);
-  border-color: rgba(47, 172, 102, .25);
-  color: var(--green);
+.mind-icon-btn {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .7);
+  color: var(--muted);
+}
+
+.mind-edit-panel footer .mind-primary,
+.mind-edit-panel footer .mind-btn {
+  height: 34px;
+  flex: 1;
 }
 
 .mind-stream-status {
@@ -819,24 +1060,6 @@ onUnmounted(() => {
   }
 }
 
-@keyframes branch-draw {
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
-@keyframes node-pop {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(.78);
-  }
-
-  to {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-}
-
 .mind-side {
   display: flex;
   flex-direction: column;
@@ -845,7 +1068,153 @@ onUnmounted(() => {
   border-left: 1px solid var(--line);
 }
 
-.mind-progress-card,
+.mind-agent-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .62);
+  padding: 14px;
+}
+
+.mind-agent-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mind-agent-panel header em {
+  color: var(--soft);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.mind-agent-panel .small-chip .material-symbols-outlined {
+  font-size: 18px;
+}
+
+.mind-agent-feed {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+  margin-top: 12px;
+  overflow: hidden;
+}
+
+.mind-agent-feed article {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.mind-agent-feed article span {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(234, 239, 236, .9);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.mind-agent-feed article.assistant span {
+  background: var(--deep);
+  color: #7df0a0;
+}
+
+.mind-agent-feed article.user {
+  grid-template-columns: minmax(0, 1fr) 28px;
+}
+
+.mind-agent-feed article.user span {
+  grid-row: 1;
+  grid-column: 2;
+  align-self: start;
+  background: rgba(234, 239, 236, .9);
+  color: var(--muted);
+}
+
+.mind-agent-feed article p {
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mind-agent-feed article.assistant p {
+  background: rgba(255, 255, 255, .88);
+  border-color: rgba(207, 221, 214, .95);
+  box-shadow: 0 8px 18px rgba(15, 40, 30, .05);
+}
+
+.mind-agent-feed article.user p {
+  grid-row: 1;
+  grid-column: 1;
+  justify-self: end;
+  align-self: start;
+  background: var(--deep);
+  color: white;
+  text-align: left;
+}
+
+.mind-agent-error {
+  margin-top: 8px;
+  border-radius: 9px;
+  background: rgba(216, 111, 114, .12);
+  color: #b33b42;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.mind-agent-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  margin-top: 10px;
+}
+
+.mind-agent-input textarea {
+  width: 100%;
+  height: 58px;
+  resize: none;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  outline: 0;
+  background: rgba(247, 252, 249, .88);
+  color: var(--ink);
+  padding: 10px 11px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.mind-agent-input textarea:focus {
+  border-color: rgba(47, 172, 102, .44);
+  box-shadow: 0 0 0 3px rgba(47, 172, 102, .1);
+}
+
+.mind-agent-input .mind-primary {
+  width: 72px;
+  height: 58px;
+  padding: 0 10px;
+}
+
 .mind-detail-card {
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -853,43 +1222,8 @@ onUnmounted(() => {
   padding: 16px;
 }
 
-.mind-step-list {
-  display: grid;
-  gap: 9px;
+.mind-sources .mind-detail-card {
   margin-top: 14px;
-}
-
-.mind-step-list article {
-  display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
-  min-height: 38px;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.mind-step-list i {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  border-radius: 50%;
-  background: rgba(234, 239, 236, .88);
-  font-style: normal;
-  font-size: 11px;
-}
-
-.mind-step-list article.done i,
-.mind-step-list article.active i {
-  background: var(--deep);
-  color: white;
-}
-
-.mind-step-list article.done strong,
-.mind-step-list article.active strong {
-  color: var(--ink);
 }
 
 .mind-detail-card h2 {
@@ -923,6 +1257,58 @@ onUnmounted(() => {
   padding: 0 10px;
   font-size: 12px;
   font-weight: 800;
+}
+
+.node-edit-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.node-edit-panel .small-chip .material-symbols-outlined {
+  font-size: 18px;
+}
+
+.node-edit-field {
+  display: grid;
+  gap: 8px;
+}
+
+.node-edit-field span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.node-edit-field input {
+  width: 100%;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  outline: 0;
+  background: rgba(247, 252, 249, .88);
+  color: var(--ink);
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.node-edit-field input:focus {
+  border-color: rgba(47, 172, 102, .44);
+  box-shadow: 0 0 0 3px rgba(47, 172, 102, .1);
+}
+
+.node-edit-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.node-edit-actions .mind-btn,
+.node-edit-actions .mind-primary,
+.node-edit-actions .mind-danger {
+  width: 100%;
+  padding: 0 10px;
 }
 
 .mind-next-actions {

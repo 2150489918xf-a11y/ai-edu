@@ -55,6 +55,10 @@ function referenceSelectedQuestions() {
           <span class="material-symbols-outlined">auto_awesome</span>
           AI 生成题目
         </button>
+        <button class="soft-btn" type="button" @click="router.push(`/question-banks/${bank.id}/paper`)">
+          <span class="material-symbols-outlined">assignment</span>
+          智能组卷
+        </button>
         <button class="soft-btn" type="button" :class="{ active: referenceMode }" @click="toggleReferenceMode">
           <span class="material-symbols-outlined">checklist</span>
           {{ referenceMode ? '取消选择' : '选择引用' }}
@@ -152,10 +156,16 @@ function referenceSelectedQuestions() {
           <span class="material-symbols-outlined">playlist_add_check</span>
           引用到课程
         </button>
-        <button v-else class="outline-generate-btn" type="button" @click="router.push(`/question-banks/${bank.id}/generate`)">
-          <span class="material-symbols-outlined">auto_awesome</span>
-          生成同类题
-        </button>
+        <div v-else class="side-actions">
+          <button class="outline-generate-btn" type="button" @click="router.push(`/question-banks/${bank.id}/paper`)">
+            <span class="material-symbols-outlined">assignment</span>
+            智能组卷
+          </button>
+          <button class="outline-generate-btn" type="button" @click="router.push(`/question-banks/${bank.id}/generate`)">
+            <span class="material-symbols-outlined">auto_awesome</span>
+            生成同类题
+          </button>
+        </div>
       </aside>
     </section>
   </main>
@@ -209,6 +219,11 @@ function referenceSelectedQuestions() {
   display: grid;
   gap: 10px;
   min-width: 116px;
+}
+
+.side-actions {
+  display: grid;
+  gap: 10px;
 }
 
 .side-panel h2 {

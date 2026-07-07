@@ -1,7 +1,11 @@
 import {
+  generatedPaper,
   knowledgeBaseCategories,
   knowledgeMaterials,
-  quadraticMindMap
+  newtonClassLearningAnalysis as classLearningAnalysis,
+  newtonParentLearningSummary,
+  newtonStudentProfiles as studentProfiles,
+  quadraticMindMap,
 } from './teachingMockData.js';
 
 const materialState = knowledgeMaterials.map((item) => ({ ...item }));
@@ -144,5 +148,106 @@ export async function generateMindMap(courseId = 'math-quadratic') {
       ...quadraticMindMap,
       courseId
     }
+  };
+}
+
+export async function getClassLearningAnalysis(classId = 'class-2026-math-1', options = {}) {
+  await delay(options.fast ? 0 : 700);
+  return {
+    ...classLearningAnalysis,
+    classId,
+    questionStats: classLearningAnalysis.questionStats.map((item) => ({
+      ...item,
+      optionDistribution: item.optionDistribution.map((option) => ({ ...option }))
+    })),
+    weakPoints: classLearningAnalysis.weakPoints.map((item) => ({ ...item }))
+  };
+}
+
+export async function getStudentProfile(studentId = 'stu-liming', options = {}) {
+  await delay(options.fast ? 0 : 700);
+  const profile = studentProfiles.find((item) => item.id === studentId) || studentProfiles[0];
+  return {
+    ...profile,
+    mastery: profile.mastery.map((item) => ({ ...item })),
+    weakPoints: [...profile.weakPoints],
+    mistakeReasons: [...profile.mistakeReasons],
+    recommendedPractice: profile.recommendedPractice.map((item) => ({ ...item })),
+    parentSummary: profile.parentSummary
+      ? {
+          ...profile.parentSummary,
+          mastered: [...profile.parentSummary.mastered],
+          needsAttention: [...profile.parentSummary.needsAttention]
+        }
+      : undefined
+  };
+}
+
+export async function getStudentProfileList(filters = {}) {
+  await delay(filters.fast ? 0 : 600);
+  const classes = [...new Set(studentProfiles.map((item) => item.className))];
+  const filteredStudents = studentProfiles.filter((student) => {
+    if (!filters.className || filters.className === '全部班级') return true;
+    return student.className === filters.className;
+  });
+
+  return {
+    classes: ['全部班级', ...classes],
+    students: filteredStudents.map((student) => {
+      const mastery = student.mastery.map((item) => ({ ...item }));
+      const lowestMastery = [...mastery].sort((a, b) => a.value - b.value)[0] || null;
+      const avgMastery = mastery.length
+        ? Math.round(mastery.reduce((sum, item) => sum + item.value, 0) / mastery.length)
+        : 0;
+
+      return {
+        id: student.id,
+        name: student.name,
+        className: student.className,
+        attendance: student.attendance,
+        practiceCount: student.practiceCount,
+        avgMastery,
+        lowestMastery,
+        weakPoints: [...student.weakPoints],
+        aiConversationSummary: student.aiConversationSummary
+      };
+    })
+  };
+}
+
+export async function getParentLearningSummary(studentId = 'stu-liming', options = {}) {
+  await delay(options.fast ? 0 : 600);
+  const profile = studentProfiles.find((item) => item.id === studentId) || studentProfiles[0];
+  return {
+    studentId: profile.id,
+    studentName: profile.name,
+    weeklyStatus: profile.parentSummary.weeklyStatus,
+    mastered: [...profile.parentSummary.mastered],
+    needsAttention: [...profile.parentSummary.needsAttention],
+    suggestion: profile.parentSummary.suggestion
+  };
+}
+
+export async function generateExamPaper(bankId = 'newton-laws-bank', config = {}, options = {}) {
+  await delay(options.fast ? 0 : 1300);
+  return {
+    bankId,
+    config,
+    paper: {
+      ...generatedPaper,
+      difficultyDistribution: generatedPaper.difficultyDistribution.map((item) => ({ ...item })),
+      knowledgeCoverage: generatedPaper.knowledgeCoverage.map((item) => ({ ...item })),
+      qualityChecks: generatedPaper.qualityChecks.map((item) => ({ ...item })),
+      questions: generatedPaper.questions.map((item) => ({ ...item }))
+    }
+  };
+}
+
+export async function saveExamPaper(paperId = generatedPaper.id, options = {}) {
+  await delay(options.fast ? 0 : 600);
+  return {
+    paperId,
+    status: 'saved',
+    message: '试卷已保存到当前题库'
   };
 }

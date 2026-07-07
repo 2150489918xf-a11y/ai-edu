@@ -7,6 +7,7 @@ import InClassPptsPage from './pages/InClassPptsPage.vue';
 import KnowledgeBasePage from './pages/KnowledgeBasePage.vue';
 import LessonPlanPage from './pages/LessonPlanPage.vue';
 import MindMapGeneratePage from './pages/MindMapGeneratePage.vue';
+import PaperGeneratePage from './pages/PaperGeneratePage.vue';
 import PptGeneratePage from './pages/PptGeneratePage.vue';
 import QuestionAnalysisPage from './pages/QuestionAnalysisPage.vue';
 import QuestionBankDetailPage from './pages/QuestionBankDetailPage.vue';
@@ -41,6 +42,7 @@ export const router = createRouter({
     { path: '/question-banks', name: 'question-banks', component: QuestionBanksPage },
     { path: '/question-banks/:bankId', name: 'question-bank-detail', component: QuestionBankDetailPage },
     { path: '/question-banks/:bankId/generate', name: 'question-generate', component: QuestionGeneratePage },
+    { path: '/question-banks/:bankId/paper', name: 'paper-generate', component: PaperGeneratePage },
     { path: '/questions/:questionId', name: 'question-detail', component: QuestionDetailPage },
     { path: '/in-class/ppts', name: 'in-class-ppts', component: InClassPptsPage },
     { path: '/in-class/play/:pptId', name: 'in-class-play', component: InClassPlayPage, meta: { fullscreen: true } },
