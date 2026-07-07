@@ -1,10 +1,10 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import AiChat from '../components/AiChat.vue';
 import {
   appendCourseChatMessage,
-  getCourse,
+  getCourse as getMockCourse,
   getCourseChat,
   getOutline,
   markDraftMaterialUploaded,
@@ -14,6 +14,7 @@ import {
   streamCourseChatMessage,
   updateDraftCourseFromChat
 } from '../data/mockStore';
+import { loadWorkspaceCourse } from '../data/workspaceCourseLoader';
 
 const route = useRoute();
 const router = useRouter();
@@ -22,6 +23,7 @@ const aiLoading = ref(false);
 const outlineLoading = ref(false);
 const materialLoading = ref(false);
 const fileInput = ref(null);
+const workspaceCourse = ref(getMockCourse(route.params.courseId));
 
 const newCourseScript = [
   {
@@ -41,8 +43,8 @@ const newCourseScript = [
   }
 ];
 
-const course = computed(() => getCourse(route.params.courseId));
 const courseId = computed(() => String(route.params.courseId));
+const course = computed(() => workspaceCourse.value);
 const courseChat = computed(() => getCourseChat(courseId.value));
 const outline = computed(() => getOutline(course.value.id));
 const topic = computed(() => course.value.title.match(/《(.+)》/)?.[1] || course.value.shortTitle.split(' ・ ').pop());
@@ -69,6 +71,28 @@ const draftFields = computed(() => [
   ['知识点', course.value.knowledge.length ? `${course.value.knowledge.length} 个已识别` : '待 AI 解析']
 ]);
 
+let courseLoadToken = 0;
+
+async function refreshWorkspaceCourse(id) {
+  const token = ++courseLoadToken;
+  const result = await loadWorkspaceCourse(String(id));
+  if (token === courseLoadToken) {
+    workspaceCourse.value = result.course;
+  }
+}
+
+onMounted(() => {
+  refreshWorkspaceCourse(route.params.courseId);
+});
+
+watch(
+  () => route.params.courseId,
+  (courseIdValue) => {
+    workspaceCourse.value = getMockCourse(courseIdValue);
+    refreshWorkspaceCourse(courseIdValue);
+  }
+);
+
 function generateOutline() {
   if (outlineLoading.value) return;
   if (!canGenerateOutline.value) {
@@ -78,6 +102,8 @@ function generateOutline() {
   outlineLoading.value = true;
   window.setTimeout(() => {
     markOutlineGenerated(course.value.id);
+    course.value.hasOutline = true;
+    course.value.progress = Math.max(course.value.progress || 0, 58);
     outlineLoading.value = false;
     notify('AI 大纲已生成');
   }, 10000);
@@ -143,6 +169,8 @@ function handleMaterialSelected(event) {
   materialLoading.value = true;
   window.setTimeout(() => {
     markDraftMaterialUploaded(course.value.id, materialName);
+    course.value.materialUploaded = true;
+    course.value.materialName = materialName;
     streamCourseChatMessage(courseId.value, { role: 'ai', text: newCourseScript[2].ai }, { delay: 3000 });
     scriptStep.value = 3;
     materialLoading.value = false;
