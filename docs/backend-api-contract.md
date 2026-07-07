@@ -44,7 +44,7 @@ volumes:
 本地 `.env` 建议：
 
 ```bash
-DATABASE_URL="postgresql://eduai:eduai_dev_password@localhost:5432/eduai_dev?schema=public"
+DATABASE_URL="postgresql://eduai:eduai_dev_password@127.0.0.1:5432/eduai_dev?schema=public"
 POSTGRES_DB="eduai_dev"
 POSTGRES_USER="eduai"
 POSTGRES_PASSWORD="eduai_dev_password"

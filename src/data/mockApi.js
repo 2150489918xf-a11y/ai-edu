@@ -7,6 +7,12 @@ import {
   newtonStudentProfiles as studentProfiles,
   quadraticMindMap,
 } from './teachingMockData.js';
+import {
+  fetchClassLearningAnalysis,
+  fetchParentLearningSummary,
+  fetchStudentProfile,
+  fetchStudentProfileList
+} from './learningApiClient.js';
 
 const materialState = knowledgeMaterials.map((item) => ({ ...item }));
 
@@ -152,6 +158,11 @@ export async function generateMindMap(courseId = 'math-quadratic') {
 }
 
 export async function getClassLearningAnalysis(classId = 'class-2026-math-1', options = {}) {
+  if (!options.fast) {
+    const remoteResult = await fetchClassLearningAnalysis(classId);
+    if (remoteResult) return remoteResult;
+  }
+
   await delay(options.fast ? 0 : 700);
   return {
     ...classLearningAnalysis,
@@ -165,6 +176,11 @@ export async function getClassLearningAnalysis(classId = 'class-2026-math-1', op
 }
 
 export async function getStudentProfile(studentId = 'stu-liming', options = {}) {
+  if (!options.fast) {
+    const remoteResult = await fetchStudentProfile(studentId);
+    if (remoteResult) return remoteResult;
+  }
+
   await delay(options.fast ? 0 : 700);
   const profile = studentProfiles.find((item) => item.id === studentId) || studentProfiles[0];
   return {
@@ -184,6 +200,11 @@ export async function getStudentProfile(studentId = 'stu-liming', options = {}) 
 }
 
 export async function getStudentProfileList(filters = {}) {
+  if (!filters.fast) {
+    const remoteResult = await fetchStudentProfileList(filters);
+    if (remoteResult) return remoteResult;
+  }
+
   await delay(filters.fast ? 0 : 600);
   const classes = [...new Set(studentProfiles.map((item) => item.className))];
   const filteredStudents = studentProfiles.filter((student) => {
@@ -216,6 +237,11 @@ export async function getStudentProfileList(filters = {}) {
 }
 
 export async function getParentLearningSummary(studentId = 'stu-liming', options = {}) {
+  if (!options.fast) {
+    const remoteResult = await fetchParentLearningSummary(studentId);
+    if (remoteResult) return remoteResult;
+  }
+
   await delay(options.fast ? 0 : 600);
   const profile = studentProfiles.find((item) => item.id === studentId) || studentProfiles[0];
   return {

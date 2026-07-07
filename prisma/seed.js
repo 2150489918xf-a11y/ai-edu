@@ -1,0 +1,221 @@
+import { loadEnvFile } from '../server/env.js';
+import {
+  generatedPaper,
+  newtonClassLearningAnalysis,
+  newtonStudentProfiles
+} from '../src/data/teachingMockData.js';
+
+loadEnvFile();
+
+const { PrismaClient } = await import('@prisma/client');
+const prisma = new PrismaClient();
+
+const classIdByName = {
+  '高一 3 班': 'class-2026-physics-1',
+  '高一 4 班': 'class-2026-physics-2'
+};
+
+const courseId = 'course-newton-2';
+const sessionId = 'session-newton-001';
+
+function avgTimeToSeconds(value) {
+  const match = String(value || '').match(/\d+/);
+  return match ? Number(match[0]) : null;
+}
+
+function normalizeWeakPoint(point) {
+  return {
+    id: point.id,
+    name: point.name,
+    score: point.score ?? point.mastery ?? point.accuracy ?? 0,
+    accuracy: point.accuracy ?? point.mastery ?? 0,
+    impact: point.impact,
+    advice: point.advice
+  };
+}
+
+async function seed() {
+  await prisma.studentAnswer.deleteMany();
+  await prisma.parentSummary.deleteMany();
+  await prisma.learningProfile.deleteMany();
+  await prisma.questionKnowledgePoint.deleteMany();
+  await prisma.question.deleteMany();
+  await prisma.knowledgePoint.deleteMany();
+  await prisma.classroomSession.deleteMany();
+  await prisma.student.deleteMany();
+  await prisma.class.deleteMany();
+  await prisma.course.deleteMany();
+
+  await prisma.course.create({
+    data: {
+      id: courseId,
+      title: '牛顿第二定律',
+      subject: '物理',
+      grade: '高一',
+      description: '围绕 F=ma、合外力计算、加速度方向和受力分析的课堂检测。'
+    }
+  });
+
+  await prisma.class.createMany({
+    data: [
+      { id: 'class-2026-physics-1', name: '高一 3 班', grade: '高一', subject: '物理' },
+      { id: 'class-2026-physics-2', name: '高一 4 班', grade: '高一', subject: '物理' }
+    ]
+  });
+
+  const knowledgePoints = [
+    { id: 'kp-newton-2', name: '牛顿第二定律', description: '理解 F=ma 的含义和应用。' },
+    { id: 'kp-resultant-force', name: '合外力计算', description: '能根据受力情况求合外力。' },
+    { id: 'kp-acceleration-direction', name: '加速度方向', description: '理解加速度方向由合外力方向决定。' },
+    { id: 'kp-force-analysis', name: '受力分析', description: '能完整画出并解释受力图。' }
+  ];
+
+  for (const point of knowledgePoints) {
+    await prisma.knowledgePoint.create({
+      data: {
+        ...point,
+        courseId
+      }
+    });
+  }
+
+  for (const student of newtonStudentProfiles) {
+    const classId = classIdByName[student.className] || 'class-2026-physics-1';
+    await prisma.student.create({
+      data: {
+        id: student.id,
+        name: student.name,
+        classId,
+        studentNo: student.id.replace('stu-', '2026-'),
+        attendance: student.attendance,
+        practiceCount: student.practiceCount
+      }
+    });
+
+    await prisma.learningProfile.create({
+      data: {
+        studentId: student.id,
+        courseId,
+        mastery: student.mastery,
+        weakPoints: student.weakPoints,
+        mistakeReasons: student.mistakeReasons,
+        recommendedPractice: student.recommendedPractice,
+        aiConversationSummary: student.aiConversationSummary
+      }
+    });
+
+    await prisma.parentSummary.create({
+      data: {
+        studentId: student.id,
+        courseId,
+        weeklyStatus: student.parentSummary.weeklyStatus,
+        mastered: student.parentSummary.mastered,
+        needsAttention: student.parentSummary.needsAttention,
+        suggestion: student.parentSummary.suggestion
+      }
+    });
+  }
+
+  const questions = [
+    ...newtonClassLearningAnalysis.questionStats.map((item, index) => ({
+      id: item.questionId,
+      title: item.title,
+      type: index === 0 ? 'single_choice' : 'calculation',
+      difficulty: index === 0 ? 'basic' : 'medium',
+      options: item.optionDistribution,
+      answer: { value: index === 0 ? '3 m/s²' : '4 m/s²，方向向右' },
+      analysis: index === 0
+        ? '由 F=ma 得 a=F/m=6/2=3 m/s²。'
+        : '先求合外力，再代入 F=ma，并说明方向。',
+      accuracy: item.accuracy,
+      avgTimeSeconds: avgTimeToSeconds(item.avgTime),
+      weakPoint: index === 0 ? '牛顿第二定律应用' : '合外力计算',
+      optionDistribution: item.optionDistribution,
+      knowledgePointIds: index === 0 ? ['kp-newton-2'] : ['kp-resultant-force', 'kp-force-analysis']
+    })),
+    ...generatedPaper.questions.slice(0, 4).map((item, index) => ({
+      id: item.id,
+      title: item.title,
+      type: item.type || 'single_choice',
+      difficulty: item.difficulty || 'basic',
+      options: item.options || null,
+      answer: { value: item.answer },
+      analysis: item.analysis || '',
+      accuracy: null,
+      avgTimeSeconds: null,
+      weakPoint: item.knowledgePoint,
+      optionDistribution: null,
+      knowledgePointIds: [knowledgePoints[index % knowledgePoints.length].id]
+    }))
+  ];
+
+  for (const question of questions) {
+    await prisma.question.create({
+      data: {
+        id: question.id,
+        courseId,
+        type: question.type,
+        difficulty: question.difficulty,
+        title: question.title,
+        options: question.options,
+        answer: question.answer,
+        analysis: question.analysis,
+        accuracy: question.accuracy,
+        avgTimeSeconds: question.avgTimeSeconds,
+        weakPoint: question.weakPoint,
+        optionDistribution: question.optionDistribution
+      }
+    });
+
+    for (const knowledgePointId of question.knowledgePointIds) {
+      await prisma.questionKnowledgePoint.create({
+        data: {
+          questionId: question.id,
+          knowledgePointId
+        }
+      });
+    }
+  }
+
+  await prisma.classroomSession.create({
+    data: {
+      id: sessionId,
+      classId: 'class-2026-physics-1',
+      courseId,
+      title: '牛顿第二定律随堂检测',
+      status: 'closed',
+      startedAt: new Date('2026-07-07T08:00:00.000Z'),
+      endedAt: new Date('2026-07-07T08:25:00.000Z')
+    }
+  });
+
+  const targetStudents = newtonStudentProfiles.filter((student) => student.className === '高一 3 班');
+  const answerRows = [];
+  for (const [studentIndex, student] of targetStudents.entries()) {
+    for (const [questionIndex, question] of questions.slice(0, 4).entries()) {
+      const isCorrect = (studentIndex + questionIndex) % 3 !== 1;
+      answerRows.push({
+        sessionId,
+        studentId: student.id,
+        questionId: question.id,
+        answer: { value: isCorrect ? question.answer.value : '待订正' },
+        isCorrect,
+        score: isCorrect ? 1 : 0,
+        durationSeconds: 40 + studentIndex * 8 + questionIndex * 12,
+        submittedAt: new Date(`2026-07-07T08:${10 + studentIndex}:${10 + questionIndex}.000Z`)
+      });
+    }
+  }
+
+  for (const row of answerRows) {
+    await prisma.studentAnswer.create({ data: row });
+  }
+
+  console.log(`Seeded ${newtonStudentProfiles.length} students, ${questions.length} questions, ${answerRows.length} answers.`);
+}
+
+try {
+  await seed();
+} finally {
+  await prisma.$disconnect();
+}

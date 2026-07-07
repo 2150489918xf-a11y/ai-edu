@@ -1,0 +1,169 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Class {
+  id        String    @id @default(uuid())
+  name      String
+  grade     String
+  subject   String
+  teacherId String?   @map("teacher_id")
+  students  Student[]
+  sessions  ClassroomSession[]
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@map("classes")
+}
+
+model Student {
+  id              String           @id @default(uuid())
+  name            String
+  classId         String           @map("class_id")
+  class           Class            @relation(fields: [classId], references: [id], onDelete: Cascade)
+  studentNo       String?          @map("student_no")
+  attendance      String?
+  practiceCount   Int              @default(0) @map("practice_count")
+  answers         StudentAnswer[]
+  learningProfiles LearningProfile[]
+  parentSummaries ParentSummary[]
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  @@map("students")
+}
+
+model Course {
+  id              String             @id @default(uuid())
+  title           String
+  subject         String
+  grade           String
+  description     String?
+  status          String             @default("active")
+  deletedAt       DateTime?          @map("deleted_at")
+  knowledgePoints KnowledgePoint[]
+  questions       Question[]
+  sessions        ClassroomSession[]
+  learningProfiles LearningProfile[]
+  parentSummaries ParentSummary[]
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  @@map("courses")
+}
+
+model KnowledgePoint {
+  id          String           @id @default(uuid())
+  courseId    String           @map("course_id")
+  course      Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  parentId    String?          @map("parent_id")
+  parent      KnowledgePoint?  @relation("KnowledgePointTree", fields: [parentId], references: [id])
+  children    KnowledgePoint[] @relation("KnowledgePointTree")
+  questions   QuestionKnowledgePoint[]
+
+  @@map("knowledge_points")
+}
+
+model Question {
+  id              String                    @id @default(uuid())
+  courseId        String                    @map("course_id")
+  course          Course                    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  type            String
+  difficulty      String
+  title           String
+  options         Json?
+  answer          Json
+  analysis        String?
+  accuracy        Int?
+  avgTimeSeconds  Int?                      @map("avg_time_seconds")
+  weakPoint       String?                   @map("weak_point")
+  optionDistribution Json?                  @map("option_distribution")
+  knowledgePoints QuestionKnowledgePoint[]
+  answers         StudentAnswer[]
+  createdAt       DateTime                  @default(now()) @map("created_at")
+  updatedAt       DateTime                  @updatedAt @map("updated_at")
+
+  @@map("questions")
+}
+
+model QuestionKnowledgePoint {
+  questionId       String         @map("question_id")
+  knowledgePointId String         @map("knowledge_point_id")
+  question         Question       @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  knowledgePoint   KnowledgePoint @relation(fields: [knowledgePointId], references: [id], onDelete: Cascade)
+
+  @@id([questionId, knowledgePointId])
+  @@map("question_knowledge_points")
+}
+
+model ClassroomSession {
+  id        String          @id @default(uuid())
+  classId   String          @map("class_id")
+  courseId  String          @map("course_id")
+  class     Class           @relation(fields: [classId], references: [id], onDelete: Cascade)
+  course    Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title     String
+  status    String
+  answers   StudentAnswer[]
+  startedAt DateTime?       @map("started_at")
+  endedAt   DateTime?       @map("ended_at")
+
+  @@map("classroom_sessions")
+}
+
+model StudentAnswer {
+  id              String           @id @default(uuid())
+  sessionId       String           @map("session_id")
+  studentId       String           @map("student_id")
+  questionId      String           @map("question_id")
+  session         ClassroomSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student         Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  question        Question         @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answer          Json
+  isCorrect       Boolean          @map("is_correct")
+  score           Decimal
+  durationSeconds Int?             @map("duration_seconds")
+  submittedAt     DateTime         @default(now()) @map("submitted_at")
+
+  @@map("student_answers")
+}
+
+model LearningProfile {
+  id                    String   @id @default(uuid())
+  studentId             String   @map("student_id")
+  courseId              String   @map("course_id")
+  student               Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course                Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  mastery               Json
+  weakPoints            Json     @map("weak_points")
+  mistakeReasons        Json     @map("mistake_reasons")
+  recommendedPractice   Json     @map("recommended_practice")
+  aiConversationSummary String?  @map("ai_conversation_summary")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@unique([studentId, courseId])
+  @@map("learning_profiles")
+}
+
+model ParentSummary {
+  id             String   @id @default(uuid())
+  studentId      String   @map("student_id")
+  courseId       String   @map("course_id")
+  student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course         Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  weeklyStatus   String   @map("weekly_status")
+  mastered       Json
+  needsAttention Json     @map("needs_attention")
+  suggestion     String
+  generatedAt    DateTime @default(now()) @map("generated_at")
+
+  @@unique([studentId, courseId])
+  @@map("parent_summaries")
+}
