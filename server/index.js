@@ -3,7 +3,9 @@ import { createServer } from 'node:http';
 import { createLearningApiApp } from './app.js';
 import { loadEnvFile } from './env.js';
 import { createLearningService } from './learningService.js';
+import { createClassService } from './services/classService.js';
 import { createCourseService } from './services/courseService.js';
+import { createStudentService } from './services/studentService.js';
 
 loadEnvFile();
 
@@ -12,7 +14,9 @@ const port = Number(process.env.SERVER_PORT || 3001);
 const prisma = new PrismaClient();
 const learningService = createLearningService(prisma);
 const courseService = createCourseService(prisma);
-const app = createLearningApiApp({ learningService, courseService });
+const classService = createClassService(prisma);
+const studentService = createStudentService(prisma);
+const app = createLearningApiApp({ learningService, courseService, classService, studentService });
 const server = createServer(app);
 
 server.listen(port, '0.0.0.0', () => {

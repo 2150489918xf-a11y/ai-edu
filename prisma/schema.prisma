@@ -13,6 +13,8 @@ model Class {
   grade     String
   subject   String
   teacherId String?   @map("teacher_id")
+  status    String    @default("active")
+  deletedAt DateTime? @map("deleted_at")
   students  Student[]
   sessions  ClassroomSession[]
   createdAt DateTime  @default(now()) @map("created_at")
@@ -29,6 +31,8 @@ model Student {
   studentNo       String?          @map("student_no")
   attendance      String?
   practiceCount   Int              @default(0) @map("practice_count")
+  status          String           @default("active")
+  deletedAt       DateTime?        @map("deleted_at")
   answers         StudentAnswer[]
   learningProfiles LearningProfile[]
   parentSummaries ParentSummary[]

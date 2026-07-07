@@ -12,7 +12,7 @@ function getPageParams(searchParams) {
   return { page, pageSize };
 }
 
-export function createLearningApiApp({ learningService, courseService }) {
+export function createLearningApiApp({ learningService, courseService, classService, studentService }) {
   if (!learningService) {
     throw new Error('learningService is required');
   }
@@ -91,7 +91,63 @@ export function createLearningApiApp({ learningService, courseService }) {
         }
       }
 
-      if (req.method === 'GET' && path === '/api/v1/classes') {
+      if (classService && req.method === 'GET' && path === '/api/v1/classes') {
+        const { page, pageSize } = getPageParams(url.searchParams);
+        const result = await classService.listClasses({
+          keyword: url.searchParams.get('keyword') || undefined,
+          status: url.searchParams.get('status') || undefined,
+          subject: url.searchParams.get('subject') || undefined,
+          grade: url.searchParams.get('grade') || undefined,
+          page,
+          pageSize
+        });
+        sendJson(res, 200, {
+          data: result.classes,
+          pagination: {
+            page,
+            pageSize,
+            total: result.total
+          }
+        });
+        return;
+      }
+
+      if (classService && req.method === 'POST' && path === '/api/v1/classes') {
+        const body = await readJsonBody(req);
+        const data = await classService.createClass(body);
+        sendJson(res, 201, { data });
+        return;
+      }
+
+      const classRestoreMatch = path.match(/^\/api\/v1\/classes\/([^/]+)\/restore$/);
+      if (classService && req.method === 'POST' && classRestoreMatch) {
+        const data = await classService.restoreClass(decodeURIComponent(classRestoreMatch[1]));
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      const classCrudMatch = path.match(/^\/api\/v1\/classes\/([^/]+)$/);
+      if (classService && classCrudMatch) {
+        const classId = decodeURIComponent(classCrudMatch[1]);
+        if (req.method === 'GET') {
+          const data = await classService.getClass(classId);
+          sendJson(res, 200, { data });
+          return;
+        }
+        if (req.method === 'PATCH') {
+          const body = await readJsonBody(req);
+          const data = await classService.updateClass(classId, body);
+          sendJson(res, 200, { data });
+          return;
+        }
+        if (req.method === 'DELETE') {
+          const data = await classService.archiveClass(classId);
+          sendJson(res, 200, { data });
+          return;
+        }
+      }
+
+      if (!classService && req.method === 'GET' && path === '/api/v1/classes') {
         const data = await learningService.getClasses({
           subject: url.searchParams.get('subject') || undefined,
           grade: url.searchParams.get('grade') || undefined
@@ -100,7 +156,72 @@ export function createLearningApiApp({ learningService, courseService }) {
         return;
       }
 
-      if (req.method === 'GET' && path === '/api/v1/students') {
+      if (studentService && req.method === 'GET' && path === '/api/v1/students') {
+        const { page, pageSize } = getPageParams(url.searchParams);
+        const result = await studentService.listStudents({
+          classId: url.searchParams.get('classId') || undefined,
+          className: url.searchParams.get('className') || undefined,
+          keyword: url.searchParams.get('keyword') || undefined,
+          status: url.searchParams.get('status') || undefined,
+          page,
+          pageSize
+        });
+        sendJson(res, 200, {
+          data: result.students,
+          meta: { classes: result.classes },
+          pagination: {
+            page,
+            pageSize,
+            total: result.total
+          }
+        });
+        return;
+      }
+
+      if (studentService && req.method === 'POST' && path === '/api/v1/students') {
+        const body = await readJsonBody(req);
+        const data = await studentService.createStudent(body);
+        sendJson(res, 201, { data });
+        return;
+      }
+
+      const studentRestoreMatch = path.match(/^\/api\/v1\/students\/([^/]+)\/restore$/);
+      if (studentService && req.method === 'POST' && studentRestoreMatch) {
+        const data = await studentService.restoreStudent(decodeURIComponent(studentRestoreMatch[1]));
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      const studentTransferMatch = path.match(/^\/api\/v1\/students\/([^/]+)\/transfer$/);
+      if (studentService && req.method === 'POST' && studentTransferMatch) {
+        const body = await readJsonBody(req);
+        const data = await studentService.transferStudent(decodeURIComponent(studentTransferMatch[1]), body);
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      const studentCrudMatch = path.match(/^\/api\/v1\/students\/([^/]+)$/);
+      if (studentService && studentCrudMatch) {
+        const studentId = decodeURIComponent(studentCrudMatch[1]);
+        if (req.method === 'GET') {
+          const data = await studentService.getStudent(studentId);
+          sendJson(res, 200, { data });
+          return;
+        }
+        if (req.method === 'PATCH') {
+          const body = await readJsonBody(req);
+          const data = await studentService.updateStudent(studentId, body);
+          sendJson(res, 200, { data });
+          return;
+        }
+        if (req.method === 'DELETE') {
+          const data = await studentService.archiveStudent(studentId);
+          sendJson(res, 200, { data });
+          return;
+        }
+      }
+
+      if (!studentService && req.method === 'GET' && path === '/api/v1/students') {
         const { page, pageSize } = getPageParams(url.searchParams);
         const result = await learningService.getStudents({
           classId: url.searchParams.get('classId') || undefined,
