@@ -11,6 +11,16 @@ const keyword = ref('');
 const loading = ref(false);
 const courses = ref([]);
 const selectedCourseId = ref('');
+const showCreateDialog = ref(false);
+const createForm = ref({
+  title: '',
+  subject: '物理',
+  grade: '高一',
+  duration: '45 分钟',
+  goal: '',
+  knowledgeText: '',
+  description: ''
+});
 
 const tabs = ['进行中', '已归档', '全部'];
 
@@ -57,17 +67,48 @@ async function loadCourses() {
   }
 }
 
-async function startNewCourse() {
+function openCreateDialog() {
+  createForm.value = {
+    title: '',
+    subject: '物理',
+    grade: '高一',
+    duration: '45 分钟',
+    goal: '',
+    knowledgeText: '',
+    description: ''
+  };
+  showCreateDialog.value = true;
+}
+
+function parseKnowledge(text) {
+  return text
+    .split(/[,，、\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+async function submitNewCourse() {
+  const title = createForm.value.title.trim();
+  if (!title) {
+    notify('请先填写课程名称');
+    return;
+  }
+
   try {
     const created = await createCourse({
-      title: '新建课程',
-      subject: '物理',
-      grade: '高一',
-      description: '新建课程草稿，可继续完善大纲、课件和题目。'
+      title,
+      subject: createForm.value.subject.trim(),
+      grade: createForm.value.grade.trim(),
+      duration: createForm.value.duration.trim(),
+      goal: createForm.value.goal.trim(),
+      knowledge: parseKnowledge(createForm.value.knowledgeText),
+      description: createForm.value.description.trim() || createForm.value.goal.trim()
     });
+    showCreateDialog.value = false;
+    activeTab.value = '进行中';
     await loadCourses();
     selectCourse(created.id);
-    notify('已创建课程草稿，进入 AI 大纲生成');
+    notify('课程基础信息已保存，进入课件生成详情');
     router.push(`/preclass/courses/${created.id}/workspace`);
   } catch (error) {
     notify(error.message || '课程创建失败');
@@ -98,7 +139,7 @@ onMounted(loadCourses);
   <main class="course-page">
     <section class="course-head">
       <h1>我的课程</h1>
-      <button class="new-course-btn" type="button" :disabled="loading" @click="startNewCourse">
+      <button class="new-course-btn" type="button" :disabled="loading" @click="openCreateDialog">
         <span class="material-symbols-outlined">add</span>
         新建课程
       </button>
@@ -188,6 +229,59 @@ onMounted(loadCourses);
           </div>
         </section>
       </aside>
+    </section>
+
+    <section v-if="showCreateDialog" class="course-dialog-backdrop" role="presentation" @click.self="showCreateDialog = false">
+      <form class="course-dialog" @submit.prevent="submitNewCourse">
+        <header>
+          <div>
+            <h2>新建课程</h2>
+            <p>填写基础信息后，系统会保存到数据库并进入课件生成详情。</p>
+          </div>
+          <button class="dialog-icon-btn" type="button" aria-label="关闭" @click="showCreateDialog = false">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </header>
+
+        <div class="course-form-grid">
+          <label class="course-field wide">
+            <span>课程名称</span>
+            <input v-model="createForm.title" type="text" placeholder="例如：牛顿第二定律" />
+          </label>
+          <label class="course-field">
+            <span>年级</span>
+            <input v-model="createForm.grade" type="text" placeholder="高一" />
+          </label>
+          <label class="course-field">
+            <span>学科</span>
+            <input v-model="createForm.subject" type="text" placeholder="物理" />
+          </label>
+          <label class="course-field">
+            <span>课时</span>
+            <input v-model="createForm.duration" type="text" placeholder="45 分钟" />
+          </label>
+          <label class="course-field wide">
+            <span>教学目标</span>
+            <textarea v-model="createForm.goal" rows="3" placeholder="这节课希望学生掌握什么？"></textarea>
+          </label>
+          <label class="course-field wide">
+            <span>核心知识点</span>
+            <input v-model="createForm.knowledgeText" type="text" placeholder="用逗号分隔，例如：F=ma，合外力计算，加速度方向" />
+          </label>
+          <label class="course-field wide">
+            <span>课程说明</span>
+            <textarea v-model="createForm.description" rows="2" placeholder="可选，用于课程列表摘要"></textarea>
+          </label>
+        </div>
+
+        <footer>
+          <button class="soft-btn" type="button" @click="showCreateDialog = false">取消</button>
+          <button class="primary-btn" type="submit" :disabled="loading">
+            保存并进入生成
+            <span class="material-symbols-outlined">arrow_forward</span>
+          </button>
+        </footer>
+      </form>
     </section>
   </main>
 </template>

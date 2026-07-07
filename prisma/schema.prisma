@@ -48,6 +48,9 @@ model Course {
   subject         String
   grade           String
   description     String?
+  duration        String?
+  goal            String?
+  knowledge       Json?
   status          String             @default("active")
   deletedAt       DateTime?          @map("deleted_at")
   knowledgePoints KnowledgePoint[]

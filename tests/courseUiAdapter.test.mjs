@@ -7,6 +7,9 @@ const activeCourse = mapApiCourseToUiCourse({
   title: '牛顿第二定律',
   subject: '物理',
   grade: '高一',
+  duration: '50 分钟',
+  goal: '理解 F=ma 并能完成基础计算。',
+  knowledge: ['F=ma', '合外力计算'],
   description: 'F=ma 与合外力计算',
   status: 'active',
   updatedAt: '2026-07-07T09:00:00.000Z'
@@ -16,8 +19,10 @@ assert.equal(activeCourse.id, 'course-newton-2');
 assert.equal(activeCourse.shortTitle, '高一 · 牛顿第二定律');
 assert.equal(activeCourse.status, '进行中');
 assert.equal(activeCourse.statusTone, 'normal');
-assert.deepEqual(activeCourse.tags, ['高一', '物理', '45 min']);
-assert.equal(activeCourse.duration, '45 分钟');
+assert.deepEqual(activeCourse.tags, ['高一', '物理', '50 min']);
+assert.equal(activeCourse.duration, '50 分钟');
+assert.equal(activeCourse.goal, '理解 F=ma 并能完成基础计算。');
+assert.deepEqual(activeCourse.knowledge, ['F=ma', '合外力计算']);
 assert.ok(activeCourse.summary.includes('F=ma'));
 assert.ok(activeCourse.knowledge.length >= 1);
 

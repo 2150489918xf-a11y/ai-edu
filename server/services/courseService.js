@@ -13,6 +13,9 @@ function normalizeCourse(course) {
     subject: course.subject,
     grade: course.grade,
     description: course.description,
+    duration: course.duration,
+    goal: course.goal,
+    knowledge: Array.isArray(course.knowledge) ? course.knowledge : [],
     status: course.status,
     deletedAt: course.deletedAt ? course.deletedAt.toISOString() : null,
     createdAt: course.createdAt?.toISOString?.() || course.createdAt,
@@ -84,7 +87,10 @@ export function createCourseService(prisma) {
           title: normalizeText(payload.title),
           subject: normalizeText(payload.subject),
           grade: normalizeText(payload.grade),
-          description: normalizeText(payload.description) || null
+          description: normalizeText(payload.description) || null,
+          duration: normalizeText(payload.duration) || '45 分钟',
+          goal: normalizeText(payload.goal) || null,
+          knowledge: Array.isArray(payload.knowledge) ? payload.knowledge : []
         }
       });
 
@@ -107,6 +113,9 @@ export function createCourseService(prisma) {
       if ('subject' in payload) data.subject = normalizeText(payload.subject);
       if ('grade' in payload) data.grade = normalizeText(payload.grade);
       if ('description' in payload) data.description = normalizeText(payload.description) || null;
+      if ('duration' in payload) data.duration = normalizeText(payload.duration) || null;
+      if ('goal' in payload) data.goal = normalizeText(payload.goal) || null;
+      if ('knowledge' in payload) data.knowledge = Array.isArray(payload.knowledge) ? payload.knowledge : [];
 
       if ('title' in data && !data.title) {
         throw createHttpError(400, 'BAD_REQUEST', '课程名称不能为空');

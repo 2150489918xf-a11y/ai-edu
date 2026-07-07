@@ -29,6 +29,7 @@ export function mapApiCourseToUiCourse(course) {
   const knowledge = Array.isArray(course.knowledge) && course.knowledge.length
     ? course.knowledge
     : inferKnowledge(course);
+  const goal = course.goal || course.description || '等待补充教学目标。';
 
   return {
     id: course.id,
@@ -43,7 +44,7 @@ export function mapApiCourseToUiCourse(course) {
     updatedAt: formatUpdatedAt(course.updatedAt),
     progress: archived ? 100 : 18,
     hasOutline: false,
-    goal: course.description || '等待补充教学目标。',
+    goal,
     summary: course.description || '课程已创建，可继续完善大纲、课件和题目。',
     tags: [course.grade || '未分级', course.subject || '未设置', duration.replace(' 分钟', ' min')],
     todos: archived ? '已归档，可恢复后继续编辑' : '待生成课程大纲',

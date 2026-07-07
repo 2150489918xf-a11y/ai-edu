@@ -1137,6 +1137,108 @@ h1 {
   line-height: 1.6;
 }
 
+.course-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(14, 27, 22, .34);
+  backdrop-filter: blur(10px);
+}
+
+.course-dialog {
+  width: min(720px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .96);
+  box-shadow: var(--shadow);
+}
+
+.course-dialog header,
+.course-dialog footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px;
+}
+
+.course-dialog header {
+  border-bottom: 1px solid var(--line);
+}
+
+.course-dialog h2 {
+  margin: 0 0 6px;
+  font-size: 24px;
+}
+
+.course-dialog p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.dialog-icon-btn {
+  display: grid;
+  min-width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .78);
+  color: var(--muted);
+}
+
+.course-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  padding: 20px 22px;
+}
+
+.course-field {
+  display: grid;
+  gap: 8px;
+}
+
+.course-field.wide {
+  grid-column: 1 / -1;
+}
+
+.course-field span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.course-field input,
+.course-field textarea {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .86);
+  color: var(--ink);
+  padding: 11px 12px;
+  font: inherit;
+  resize: vertical;
+}
+
+.course-dialog footer {
+  border-top: 1px solid var(--line);
+  justify-content: flex-end;
+}
+
+@media (max-width: 760px) {
+  .course-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .course-row {
   position: relative;
   display: grid;

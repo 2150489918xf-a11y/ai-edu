@@ -48,6 +48,9 @@ function listen() {
     if (req.method === 'POST' && url.pathname === '/api/v1/courses') {
       const body = await readJsonBody(req);
       assert.equal(body.title, '动量守恒');
+      assert.equal(body.duration, '45 分钟');
+      assert.equal(body.goal, '理解动量守恒的适用条件。');
+      assert.deepEqual(body.knowledge, ['动量', '冲量']);
       sendJson(res, 201, { data: { id: 'course-momentum', ...body, status: 'active' } });
       return;
     }
@@ -101,6 +104,9 @@ try {
     title: '动量守恒',
     subject: '物理',
     grade: '高一',
+    duration: '45 分钟',
+    goal: '理解动量守恒的适用条件。',
+    knowledge: ['动量', '冲量'],
     description: '动量守恒定律'
   });
   assert.equal(created.id, 'course-momentum');
