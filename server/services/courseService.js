@@ -16,6 +16,11 @@ function normalizeCourse(course) {
     duration: course.duration,
     goal: course.goal,
     knowledge: Array.isArray(course.knowledge) ? course.knowledge : [],
+    hasOutline: Boolean(course.hasOutline),
+    progress: course.progress ?? 18,
+    materialUploaded: Boolean(course.materialUploaded),
+    materialName: course.materialName || null,
+    outline: course.outline || null,
     status: course.status,
     deletedAt: course.deletedAt ? course.deletedAt.toISOString() : null,
     createdAt: course.createdAt?.toISOString?.() || course.createdAt,
@@ -90,7 +95,12 @@ export function createCourseService(prisma) {
           description: normalizeText(payload.description) || null,
           duration: normalizeText(payload.duration) || '45 分钟',
           goal: normalizeText(payload.goal) || null,
-          knowledge: Array.isArray(payload.knowledge) ? payload.knowledge : []
+          knowledge: Array.isArray(payload.knowledge) ? payload.knowledge : [],
+          hasOutline: Boolean(payload.hasOutline),
+          progress: Number.isFinite(Number(payload.progress)) ? Number(payload.progress) : 18,
+          materialUploaded: Boolean(payload.materialUploaded),
+          materialName: normalizeText(payload.materialName) || null,
+          outline: payload.outline || null
         }
       });
 
@@ -116,6 +126,11 @@ export function createCourseService(prisma) {
       if ('duration' in payload) data.duration = normalizeText(payload.duration) || null;
       if ('goal' in payload) data.goal = normalizeText(payload.goal) || null;
       if ('knowledge' in payload) data.knowledge = Array.isArray(payload.knowledge) ? payload.knowledge : [];
+      if ('hasOutline' in payload) data.hasOutline = Boolean(payload.hasOutline);
+      if ('progress' in payload) data.progress = Math.min(Math.max(Number(payload.progress) || 0, 0), 100);
+      if ('materialUploaded' in payload) data.materialUploaded = Boolean(payload.materialUploaded);
+      if ('materialName' in payload) data.materialName = normalizeText(payload.materialName) || null;
+      if ('outline' in payload) data.outline = payload.outline || null;
 
       if ('title' in data && !data.title) {
         throw createHttpError(400, 'BAD_REQUEST', '课程名称不能为空');

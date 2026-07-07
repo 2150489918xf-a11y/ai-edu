@@ -14,6 +14,7 @@ import {
   streamCourseChatMessage,
   updateDraftCourseFromChat
 } from '../data/mockStore';
+import { updateCourse } from '../data/courseApiClient';
 import { loadWorkspaceCourse } from '../data/workspaceCourseLoader';
 
 const route = useRoute();
@@ -81,6 +82,18 @@ async function refreshWorkspaceCourse(id) {
   }
 }
 
+async function persistWorkspaceCourseState(patch) {
+  try {
+    const updated = await updateCourse(courseId.value, patch);
+    const result = await loadWorkspaceCourse(courseId.value, {
+      fetchCourse: async () => updated
+    });
+    workspaceCourse.value = result.course;
+  } catch {
+    // Mock-only courses cannot be persisted to the API; keep the local interaction usable.
+  }
+}
+
 onMounted(() => {
   refreshWorkspaceCourse(route.params.courseId);
 });
@@ -104,6 +117,11 @@ function generateOutline() {
     markOutlineGenerated(course.value.id);
     course.value.hasOutline = true;
     course.value.progress = Math.max(course.value.progress || 0, 58);
+    persistWorkspaceCourseState({
+      hasOutline: true,
+      progress: course.value.progress,
+      outline: course.value.outline || outline.value
+    });
     outlineLoading.value = false;
     notify('AI 大纲已生成');
   }, 10000);
@@ -171,6 +189,11 @@ function handleMaterialSelected(event) {
     markDraftMaterialUploaded(course.value.id, materialName);
     course.value.materialUploaded = true;
     course.value.materialName = materialName;
+    persistWorkspaceCourseState({
+      materialUploaded: true,
+      materialName,
+      progress: Math.max(course.value.progress || 0, 34)
+    });
     streamCourseChatMessage(courseId.value, { role: 'ai', text: newCourseScript[2].ai }, { delay: 3000 });
     scriptStep.value = 3;
     materialLoading.value = false;

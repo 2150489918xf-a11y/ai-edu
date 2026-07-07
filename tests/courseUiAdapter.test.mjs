@@ -4,33 +4,42 @@ import { mapApiCourseToUiCourse } from '../src/data/courseUiAdapter.js';
 
 const activeCourse = mapApiCourseToUiCourse({
   id: 'course-newton-2',
-  title: '牛顿第二定律',
-  subject: '物理',
-  grade: '高一',
-  duration: '50 分钟',
-  goal: '理解 F=ma 并能完成基础计算。',
-  knowledge: ['F=ma', '合外力计算'],
-  description: 'F=ma 与合外力计算',
+  title: 'Newton Second Law',
+  subject: 'Physics',
+  grade: 'Grade 10',
+  duration: '50 minutes',
+  goal: 'Understand F=ma and complete basic calculations.',
+  knowledge: ['F=ma', 'net force calculation'],
+  hasOutline: true,
+  progress: 58,
+  materialUploaded: true,
+  materialName: 'newton-source.pdf',
+  outline: { version: 'v1' },
+  description: 'F=ma and net force calculation',
   status: 'active',
   updatedAt: '2026-07-07T09:00:00.000Z'
 });
 
 assert.equal(activeCourse.id, 'course-newton-2');
-assert.equal(activeCourse.shortTitle, '高一 · 牛顿第二定律');
+assert.equal(activeCourse.shortTitle, 'Grade 10 · Newton Second Law');
 assert.equal(activeCourse.status, '进行中');
 assert.equal(activeCourse.statusTone, 'normal');
-assert.deepEqual(activeCourse.tags, ['高一', '物理', '50 min']);
-assert.equal(activeCourse.duration, '50 分钟');
-assert.equal(activeCourse.goal, '理解 F=ma 并能完成基础计算。');
-assert.deepEqual(activeCourse.knowledge, ['F=ma', '合外力计算']);
+assert.deepEqual(activeCourse.tags, ['Grade 10', 'Physics', '50 minutes']);
+assert.equal(activeCourse.duration, '50 minutes');
+assert.equal(activeCourse.goal, 'Understand F=ma and complete basic calculations.');
+assert.deepEqual(activeCourse.knowledge, ['F=ma', 'net force calculation']);
+assert.equal(activeCourse.hasOutline, true);
+assert.equal(activeCourse.progress, 58);
+assert.equal(activeCourse.materialUploaded, true);
+assert.equal(activeCourse.materialName, 'newton-source.pdf');
+assert.equal(activeCourse.outline.version, 'v1');
 assert.ok(activeCourse.summary.includes('F=ma'));
-assert.ok(activeCourse.knowledge.length >= 1);
 
 const archivedCourse = mapApiCourseToUiCourse({
   id: 'course-archived',
-  title: '旧课程',
-  subject: '数学',
-  grade: '高一',
+  title: 'Archived course',
+  subject: 'Math',
+  grade: 'Grade 10',
   description: '',
   status: 'archived',
   deletedAt: '2026-07-07T09:10:00.000Z'

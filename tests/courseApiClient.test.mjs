@@ -36,10 +36,10 @@ function listen() {
     calls.push({ method: req.method, path: url.pathname, search: url.search });
 
     if (req.method === 'GET' && url.pathname === '/api/v1/courses') {
-      assert.equal(url.searchParams.get('keyword'), '牛顿');
+      assert.equal(url.searchParams.get('keyword'), 'newton');
       assert.equal(url.searchParams.get('status'), 'active');
       sendJson(res, 200, {
-        data: [{ id: 'course-newton-2', title: '牛顿第二定律', subject: '物理', grade: '高一' }],
+        data: [{ id: 'course-newton-2', title: 'Newton Second Law', subject: 'Physics', grade: 'Grade 10' }],
         pagination: { page: 1, pageSize: 20, total: 1 }
       });
       return;
@@ -47,26 +47,31 @@ function listen() {
 
     if (req.method === 'POST' && url.pathname === '/api/v1/courses') {
       const body = await readJsonBody(req);
-      assert.equal(body.title, '动量守恒');
-      assert.equal(body.duration, '45 分钟');
-      assert.equal(body.goal, '理解动量守恒的适用条件。');
-      assert.deepEqual(body.knowledge, ['动量', '冲量']);
+      assert.equal(body.title, 'Momentum Conservation');
+      assert.equal(body.duration, '45 minutes');
+      assert.equal(body.goal, 'Understand when momentum is conserved.');
+      assert.deepEqual(body.knowledge, ['momentum', 'impulse']);
       sendJson(res, 201, { data: { id: 'course-momentum', ...body, status: 'active' } });
       return;
     }
 
     if (req.method === 'GET' && url.pathname === '/api/v1/courses/course-newton-2') {
       sendJson(res, 200, {
-        data: { id: 'course-newton-2', title: '牛顿第二定律', subject: '物理', grade: '高一' }
+        data: { id: 'course-newton-2', title: 'Newton Second Law', subject: 'Physics', grade: 'Grade 10' }
       });
       return;
     }
 
     if (req.method === 'PATCH' && url.pathname === '/api/v1/courses/course-newton-2') {
       const body = await readJsonBody(req);
-      assert.equal(body.description, '更新说明');
+      assert.equal(body.description, 'Updated description');
+      assert.equal(body.hasOutline, true);
+      assert.equal(body.progress, 58);
+      assert.equal(body.materialUploaded, true);
+      assert.equal(body.materialName, 'newton-source.pdf');
+      assert.equal(body.outline.version, 'v1');
       sendJson(res, 200, {
-        data: { id: 'course-newton-2', title: '牛顿第二定律', description: body.description }
+        data: { id: 'course-newton-2', title: 'Newton Second Law', ...body }
       });
       return;
     }
@@ -96,26 +101,35 @@ const { server, calls, baseUrl } = await listen();
 globalThis.__EDUAI_API_BASE_URL__ = baseUrl;
 
 try {
-  const courses = await listCourses({ keyword: '牛顿', status: 'active' });
+  const courses = await listCourses({ keyword: 'newton', status: 'active' });
   assert.equal(courses.data[0].id, 'course-newton-2');
   assert.equal(courses.pagination.total, 1);
 
   const created = await createCourse({
-    title: '动量守恒',
-    subject: '物理',
-    grade: '高一',
-    duration: '45 分钟',
-    goal: '理解动量守恒的适用条件。',
-    knowledge: ['动量', '冲量'],
-    description: '动量守恒定律'
+    title: 'Momentum Conservation',
+    subject: 'Physics',
+    grade: 'Grade 10',
+    duration: '45 minutes',
+    goal: 'Understand when momentum is conserved.',
+    knowledge: ['momentum', 'impulse'],
+    description: 'Momentum conservation law'
   });
   assert.equal(created.id, 'course-momentum');
 
   const detail = await getCourse('course-newton-2');
-  assert.equal(detail.title, '牛顿第二定律');
+  assert.equal(detail.title, 'Newton Second Law');
 
-  const updated = await updateCourse('course-newton-2', { description: '更新说明' });
-  assert.equal(updated.description, '更新说明');
+  const updated = await updateCourse('course-newton-2', {
+    description: 'Updated description',
+    hasOutline: true,
+    progress: 58,
+    materialUploaded: true,
+    materialName: 'newton-source.pdf',
+    outline: { version: 'v1' }
+  });
+  assert.equal(updated.description, 'Updated description');
+  assert.equal(updated.hasOutline, true);
+  assert.equal(updated.progress, 58);
 
   const archived = await archiveCourse('course-newton-2');
   assert.equal(archived.status, 'archived');

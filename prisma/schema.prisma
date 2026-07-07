@@ -51,6 +51,11 @@ model Course {
   duration        String?
   goal            String?
   knowledge       Json?
+  hasOutline      Boolean            @default(false) @map("has_outline")
+  progress        Int                @default(18)
+  materialUploaded Boolean           @default(false) @map("material_uploaded")
+  materialName    String?            @map("material_name")
+  outline         Json?
   status          String             @default("active")
   deletedAt       DateTime?          @map("deleted_at")
   knowledgePoints KnowledgePoint[]
