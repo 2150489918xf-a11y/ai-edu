@@ -1,79 +1,125 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { createQuestion } from '../data/questionBankApiClient';
-import { getAnsweredCourseQuestions, getBank, notify, saveGeneratedQuestionsToBank, store } from '../data/mockStore';
+import AiChat from '../components/AiChat.vue';
+import { parseQuestionsFromAiText } from '../data/aiQuestionParser';
+import { createQuestion, getQuestionBank } from '../data/questionBankApiClient';
+import { getAnsweredCourseQuestions, getBank, notify, store } from '../data/mockStore';
 
 const route = useRoute();
 const router = useRouter();
-const generated = ref(false);
-const generating = ref(false);
-const selecting = ref(false);
+const aiLoading = ref(false);
+const saving = ref(false);
 const selected = ref([]);
-const teacherPrompt = ref('围绕牛顿第二定律，生成适合高一课堂即时检测的题目，重点考查合力、加速度方向和 F=ma 基础应用。');
+const candidateQuestions = ref([]);
+const currentBank = ref(getBank(route.params.bankId));
+const teacherPrompt = ref('围绕牛顿第二定律，生成适合高一课堂即时检测的题目，重点考查合外力、加速度方向和 F=ma 基础应用。');
 const selectedAnalysisId = ref('newton-q3');
-const generatedDrafts = ref([]);
-const bank = computed(() => getBank(route.params.bankId));
+const aiMessages = ref([
+  {
+    role: 'ai',
+    title: '题目生成助手',
+    text: '你可以直接描述题目要求。我会把回复中的结构化题目解析成候选卡片，勾选后可保存进当前题库。'
+  }
+]);
+
 const analysisQuestions = computed(() => getAnsweredCourseQuestions(store.selectedCourseId));
 const selectedAnalysis = computed(() => store.afterClass.questionAnalysis[selectedAnalysisId.value] || store.afterClass.questionAnalysis['newton-q1']);
 const selectedAnalysisQuestion = computed(() => store.questions.find((question) => question.id === selectedAnalysisId.value) || analysisQuestions.value[0] || store.questions[0]);
-const generatedQuestions = computed(() => generated.value ? generatedDrafts.value : []);
+const selectedQuestions = computed(() => candidateQuestions.value.filter((question) => selected.value.includes(question.id)));
 
-function createDraftQuestions() {
-  return [
+function stripQuestionBlocks(text) {
+  return String(text).replace(/:::questions\s*[\s\S]*?\s*:::/g, '').trim();
+}
+
+function buildAiReply(inputText) {
+  const wantsCalculation = /计算|合外力|摩擦|加速度/.test(inputText);
+  const questions = [
     {
-      id: 'draft-newton-1',
       type: '单选题',
       stage: '课中',
       difficulty: '基础',
       title: '物体质量不变时，合外力增大到原来的 2 倍，加速度将如何变化？',
-      analysis: '根据 F=ma，质量不变时，加速度与合外力成正比。'
+      options: ['变为原来的 2 倍', '变为原来的一半', '保持不变', '无法判断'],
+      answer: '变为原来的 2 倍',
+      analysis: '根据 F=ma，质量不变时，加速度与合外力成正比。',
+      knowledge: ['F=ma', '合外力']
     },
     {
-      id: 'draft-newton-2',
       type: '单选题',
       stage: '课中',
       difficulty: '理解',
       title: '小车向右运动时受到向左的合外力，下列说法正确的是哪一项？',
-      analysis: '加速度方向始终与合外力方向一致，速度方向不一定立刻改变。'
+      options: ['加速度向左', '速度立刻向左', '合外力为零', '质量变小'],
+      answer: '加速度向左',
+      analysis: '加速度方向始终与合外力方向一致，速度方向不一定立即改变。',
+      knowledge: ['加速度方向', '合外力方向']
     },
     {
-      id: 'draft-newton-3',
-      type: '计算题',
+      type: wantsCalculation ? '计算题' : '单选题',
       stage: '课后',
       difficulty: '提升',
       title: '质量 1 kg 的木块受到 5 N 水平拉力，同时受到 1 N 摩擦力，求木块加速度。',
-      analysis: '合外力为 5N-1N=4N，a=F合/m=4/1=4 m/s²。'
+      options: [],
+      answer: '4 m/s²',
+      analysis: '合外力为 5N-1N=4N，a=F合/m=4/1=4 m/s²。',
+      knowledge: ['合外力计算', 'F=ma']
     }
   ];
+
+  return [
+    '我根据你的要求生成了 3 道可入库题目，已优先覆盖 F=ma、合外力方向和含摩擦力计算。',
+    ':::questions',
+    JSON.stringify(questions, null, 2),
+    ':::'
+  ].join('\n');
+}
+
+function addParsedQuestions(rawReply) {
+  const parsed = parseQuestionsFromAiText(rawReply);
+  if (!parsed.length) {
+    notify('AI 回复中没有识别到结构化题目');
+    return;
+  }
+
+  const existingTitles = new Set(candidateQuestions.value.map((question) => question.title));
+  const timestamp = Date.now();
+  const additions = parsed
+    .filter((question) => !existingTitles.has(question.title))
+    .map((question, index) => ({
+      ...question,
+      id: `ai-candidate-${timestamp}-${index + 1}`
+    }));
+
+  candidateQuestions.value = [...additions, ...candidateQuestions.value];
+  selected.value = [...new Set([...additions.map((question) => question.id), ...selected.value])];
+  notify(`已解析 ${additions.length} 道候选题`);
+}
+
+function sendAiMessage(inputText) {
+  const text = inputText.trim();
+  if (!text || aiLoading.value) return;
+
+  aiMessages.value.push({ role: 'teacher', text });
+  aiLoading.value = true;
+  window.setTimeout(() => {
+    const rawReply = buildAiReply(text);
+    aiMessages.value.push({
+      role: 'ai',
+      title: '已解析题目',
+      text: stripQuestionBlocks(rawReply)
+    });
+    addParsedQuestions(rawReply);
+    aiLoading.value = false;
+  }, 1200);
 }
 
 function generate() {
-  if (generating.value) return;
-  generating.value = true;
-  window.setTimeout(() => {
-    generatedDrafts.value = createDraftQuestions();
-    generated.value = true;
-    selecting.value = true;
-    selected.value = generatedDrafts.value.map((question) => question.id);
-    generating.value = false;
-    notify('已生成 6 道牛顿第二定律变式题');
-  }, 10000);
+  sendAiMessage(teacherPrompt.value);
 }
 
 function regenerate() {
-  if (generating.value) return;
-  generating.value = true;
-  generated.value = false;
-  selected.value = [];
-  window.setTimeout(() => {
-    generatedDrafts.value = createDraftQuestions();
-    generated.value = true;
-    selecting.value = true;
-    selected.value = generatedDrafts.value.map((question) => question.id);
-    generating.value = false;
-    notify('已重新生成一版题目');
-  }, 10000);
+  sendAiMessage('请基于当前候选题再生成一组不同题干，增加一道计算题，并保持难度分层。');
 }
 
 function toggle(questionId) {
@@ -82,28 +128,40 @@ function toggle(questionId) {
     : [...selected.value, questionId];
 }
 
-function saveToMockBank() {
-  const drafts = generatedDrafts.value.filter((question) => selected.value.includes(question.id));
-  const saved = saveGeneratedQuestionsToBank(bank.value.id, drafts);
-  const savedCount = saved.length;
-  notify(`已保存 ${savedCount} 道题到当前题库`);
-  router.push(`/question-banks/${bank.value.id}`);
-}
 async function saveToBank() {
-  const drafts = generatedDrafts.value.filter((question) => selected.value.includes(question.id));
-  await Promise.all(drafts.map((question) => createQuestion(route.params.bankId, {
-    title: question.title,
-    type: question.type,
-    stage: question.stage,
-    difficulty: question.difficulty,
-    options: question.options || [],
-    answer: question.answer || '',
-    analysis: question.analysis || '',
-    knowledge: question.knowledge ? [question.knowledge] : []
-  })));
-  notify(`已保存 ${drafts.length} 道题到数据库`);
-  router.push(`/question-banks/${route.params.bankId}`);
+  const drafts = selectedQuestions.value;
+  if (!drafts.length || saving.value) return;
+  saving.value = true;
+  try {
+    await Promise.all(drafts.map((question) => createQuestion(route.params.bankId, {
+      title: question.title,
+      type: question.type,
+      stage: question.stage,
+      difficulty: question.difficulty,
+      options: question.options || [],
+      answer: question.answer || '',
+      analysis: question.analysis || '',
+      knowledge: question.knowledge || []
+    })));
+    notify(`已保存 ${drafts.length} 道题到数据库`);
+    router.push(`/question-banks/${route.params.bankId}`);
+  } catch (error) {
+    notify(error.message || '保存题目失败');
+  } finally {
+    saving.value = false;
+  }
 }
+
+async function loadBank() {
+  try {
+    currentBank.value = await getQuestionBank(route.params.bankId);
+  } catch {
+    currentBank.value = getBank(route.params.bankId);
+  }
+}
+
+onMounted(loadBank);
+watch(() => route.params.bankId, loadBank);
 </script>
 
 <template>
@@ -111,21 +169,21 @@ async function saveToBank() {
     <section class="module-head">
       <div>
         <h1>AI 生成题目</h1>
-        <p>{{ bank.title }} ・ 引用学情分析中的薄弱点，生成可直接下发的补救题和变式题。</p>
+        <p>{{ currentBank.title }} · 与 AI 对话生成题目，系统会解析回复中的题目并保存到数据库。</p>
       </div>
       <div class="hero-actions">
-        <button class="soft-btn back-btn" type="button" @click="router.push(`/question-banks/${bank.id}`)">
+        <button class="soft-btn back-btn" type="button" @click="router.push(`/question-banks/${route.params.bankId}`)">
           <span class="material-symbols-outlined">chevron_left</span>
           返回题库
         </button>
-        <button class="primary-btn" type="button" :disabled="generating" @click="generate">
-          <span class="material-symbols-outlined">{{ generating ? 'progress_activity' : 'auto_awesome' }}</span>
-          {{ generating ? '生成中' : '生成题目' }}
+        <button class="primary-btn" type="button" :disabled="aiLoading" @click="generate">
+          <span class="material-symbols-outlined">{{ aiLoading ? 'progress_activity' : 'auto_awesome' }}</span>
+          {{ aiLoading ? '生成中' : '生成题目' }}
         </button>
       </div>
     </section>
 
-    <section class="generate-layout">
+    <section class="ai-question-layout">
       <article class="surface-card generate-form">
         <span class="small-chip">生成设置</span>
         <label class="form-label">引用学情分析</label>
@@ -138,7 +196,7 @@ async function saveToBank() {
             @click="selectedAnalysisId = question.id"
           >
             <strong>{{ question.title }}</strong>
-            <span>正确率 {{ question.accuracy }}% ・ {{ question.stage }} ・ {{ question.difficulty }}</span>
+            <span>正确率 {{ question.accuracy }}% · {{ question.stage }} · {{ question.difficulty }}</span>
           </button>
         </div>
         <div class="analysis-source">
@@ -169,37 +227,32 @@ async function saveToBank() {
           <button class="active" type="button">理解 40%</button>
           <button type="button">提升 20%</button>
         </div>
-        <button class="outline-generate-btn" type="button" :disabled="generating" @click="generate">
-          <span class="material-symbols-outlined">{{ generating ? 'progress_activity' : 'auto_awesome' }}</span>
-          {{ generating ? 'AI 正在生成...' : '生成 6 道课堂题' }}
+        <button class="outline-generate-btn" type="button" :disabled="aiLoading" @click="generate">
+          <span class="material-symbols-outlined">{{ aiLoading ? 'progress_activity' : 'auto_awesome' }}</span>
+          {{ aiLoading ? 'AI 正在生成...' : '生成课堂题' }}
         </button>
       </article>
 
       <section class="surface-card generated-panel">
         <header>
           <div>
-            <span class="small-chip">{{ generated ? '已生成' : '学情引用预览' }}</span>
-            <h2>{{ generated ? '可保存进当前题库的题目' : '等待生成题目' }}</h2>
+            <span class="small-chip">候选题</span>
+            <h2>{{ candidateQuestions.length ? '可保存进当前题库的题目' : '等待 AI 解析题目' }}</h2>
           </div>
-          <button
-            class="soft-btn"
-            type="button"
-            :disabled="!generated || generating"
-            @click="selecting = !selecting"
-          >
-            {{ selecting ? '取消选择' : '选择' }}
+          <button class="soft-btn" type="button" :disabled="aiLoading" @click="regenerate">
+            再生成一组
           </button>
         </header>
 
-        <div v-if="generating" class="generation-loading">
+        <div v-if="aiLoading" class="generation-loading">
           <span class="material-symbols-outlined">auto_awesome</span>
-          <strong>AI 正在组合题干、选项和解析</strong>
-          <p>正在引用「{{ selectedAnalysisQuestion.title }}」的学情分析，补强薄弱知识点。</p>
+          <strong>AI 正在组织题干、选项和解析</strong>
+          <p>正在引用“{{ selectedAnalysisQuestion.title }}”的学情分析，补强薄弱知识点。</p>
         </div>
 
-        <div v-else-if="generated" class="list-panel">
-          <article v-for="question in generatedQuestions" :key="question.id" class="question-row" :class="{ picking: selecting }">
-            <button v-if="selecting" class="select-dot" :class="{ active: selected.includes(question.id) }" type="button" @click="toggle(question.id)">
+        <div v-else-if="candidateQuestions.length" class="list-panel">
+          <article v-for="question in candidateQuestions" :key="question.id" class="question-row picking">
+            <button class="select-dot" :class="{ active: selected.includes(question.id) }" type="button" @click="toggle(question.id)">
               <span class="material-symbols-outlined">check</span>
             </button>
             <div>
@@ -209,24 +262,37 @@ async function saveToBank() {
                 <span>{{ question.difficulty }}</span>
               </div>
               <h3>{{ question.title }}</h3>
-              <p>{{ question.analysis }}</p>
+              <p>{{ question.options?.length ? question.options.join('　') : question.analysis }}</p>
+              <p class="candidate-answer">答案：{{ question.answer || '待补充' }}</p>
             </div>
-            <button class="soft-btn" type="button" @click="router.push(`/questions/${question.id}`)">详情</button>
+            <button class="soft-btn" type="button" @click="notify(question.analysis || '暂无解析')">解析</button>
           </article>
         </div>
         <div v-else class="empty-generate-panel">
           <span class="material-symbols-outlined">auto_awesome</span>
-          <strong>右侧将在生成后展示题目</strong>
-          <p>先在左侧补充生成要求，再点击「生成题目」。生成结果保存进当前题库后，回到题库页选择引用到课程。</p>
+          <strong>AI 回复中的题目会出现在这里</strong>
+          <p>右侧对话或左侧生成按钮都会触发解析器。识别出的题目先进入候选区，老师确认后再入库。</p>
         </div>
 
         <footer>
-          <span>{{ generated ? `已选择 ${selected.length} 道` : '尚未生成题目' }}</span>
-          <button class="primary-btn" type="button" :disabled="!generated || !selected.length" @click="saveToBank">
-            保存进当前题库
+          <span>已选择 {{ selected.length }} 道</span>
+          <button class="primary-btn" type="button" :disabled="!selected.length || saving" @click="saveToBank">
+            {{ saving ? '保存中' : '保存进当前题库' }}
           </button>
         </footer>
       </section>
+
+      <AiChat
+        class="question-ai-chat"
+        title="AI 出题助手"
+        :messages="aiMessages"
+        :loading="aiLoading"
+        loading-label="生成中"
+        placeholder="继续告诉 AI：题型、难度、知识点或要避开的错误..."
+        send-label="发送"
+        :suggestions="['再出 3 道计算题', '降低难度', '围绕合外力方向出题']"
+        @send="sendAiMessage"
+      />
     </section>
   </main>
 </template>
@@ -237,9 +303,9 @@ async function saveToBank() {
   font-weight: 800;
 }
 
-.generate-layout {
+.ai-question-layout {
   display: grid;
-  grid-template-columns: 368px minmax(0, 1fr);
+  grid-template-columns: 1fr;
   gap: 18px;
   margin-top: 24px;
 }
@@ -312,7 +378,7 @@ async function saveToBank() {
 .teacher-prompt {
   width: 100%;
   min-height: 118px;
-  resize: none;
+  resize: vertical;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: rgba(255, 255, 255, .72);
@@ -335,16 +401,20 @@ async function saveToBank() {
   opacity: .72;
 }
 
-.generation-loading {
+.generation-loading,
+.empty-generate-panel {
   display: grid;
   min-height: 360px;
   place-items: center;
   align-content: center;
   gap: 12px;
-  border: 1px dashed rgba(47, 172, 102, .28);
   border-radius: 16px;
-  background: rgba(220, 246, 232, .34);
   text-align: center;
+}
+
+.generation-loading {
+  border: 1px dashed rgba(47, 172, 102, .28);
+  background: rgba(220, 246, 232, .34);
 }
 
 .generation-loading .material-symbols-outlined {
@@ -358,27 +428,24 @@ async function saveToBank() {
   animation: spin-soft 1.2s linear infinite;
 }
 
-.generation-loading strong {
+.generation-loading strong,
+.empty-generate-panel strong {
   font-family: var(--font-serif);
   font-size: 20px;
 }
 
-.generation-loading p {
+.generation-loading p,
+.empty-generate-panel p {
+  max-width: 420px;
   color: var(--soft);
-  font-size: var(--edu-body);
+  font-size: 13px;
+  line-height: 1.7;
 }
 
 .empty-generate-panel {
-  display: grid;
-  min-height: 430px;
-  place-items: center;
-  align-content: center;
-  gap: 12px;
   border: 1px dashed rgba(16, 55, 35, .18);
-  border-radius: 16px;
   background:
     linear-gradient(135deg, rgba(244, 250, 246, .82), rgba(255, 255, 255, .66));
-  text-align: center;
 }
 
 .empty-generate-panel .material-symbols-outlined {
@@ -390,18 +457,6 @@ async function saveToBank() {
   background: var(--deep);
   color: #7df0a0;
   font-size: 26px;
-}
-
-.empty-generate-panel strong {
-  font-family: var(--font-serif);
-  font-size: 22px;
-}
-
-.empty-generate-panel p {
-  max-width: 420px;
-  color: var(--soft);
-  font-size: 13px;
-  line-height: 1.7;
 }
 
 @keyframes spin-soft {
@@ -417,7 +472,7 @@ async function saveToBank() {
 }
 
 .choice-grid button {
-  height: 42px;
+  min-height: 42px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: rgba(255, 255, 255, .68);
@@ -429,6 +484,10 @@ async function saveToBank() {
   border-color: var(--green);
   background: var(--mint);
   color: #1f8847;
+}
+
+.generated-panel {
+  min-width: 0;
 }
 
 .generated-panel header,
@@ -458,12 +517,14 @@ async function saveToBank() {
   font-weight: 700;
 }
 
-.question-row {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
 .question-row.picking {
   grid-template-columns: 34px minmax(0, 1fr) auto;
+}
+
+.candidate-answer {
+  margin-top: 8px;
+  color: var(--green);
+  font-weight: 700;
 }
 
 .select-dot {
@@ -485,5 +546,34 @@ async function saveToBank() {
 
 .select-dot .material-symbols-outlined {
   font-size: 16px;
+}
+
+.question-ai-chat {
+  min-height: 560px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+@media (min-width: 1024px) {
+  .ai-question-layout {
+    grid-template-columns: minmax(280px, 330px) minmax(0, 1fr);
+  }
+
+  .question-ai-chat {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 1280px) {
+  .ai-question-layout {
+    grid-template-columns: minmax(280px, 330px) minmax(0, 1fr) minmax(320px, 360px);
+    align-items: stretch;
+  }
+
+  .question-ai-chat {
+    grid-column: auto;
+    min-height: 760px;
+  }
 }
 </style>
