@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { createQuestion } from '../data/questionBankApiClient';
 import { getAnsweredCourseQuestions, getBank, notify, saveGeneratedQuestionsToBank, store } from '../data/mockStore';
 
 const route = useRoute();
@@ -81,12 +82,27 @@ function toggle(questionId) {
     : [...selected.value, questionId];
 }
 
-function saveToBank() {
+function saveToMockBank() {
   const drafts = generatedDrafts.value.filter((question) => selected.value.includes(question.id));
   const saved = saveGeneratedQuestionsToBank(bank.value.id, drafts);
   const savedCount = saved.length;
   notify(`已保存 ${savedCount} 道题到当前题库`);
   router.push(`/question-banks/${bank.value.id}`);
+}
+async function saveToBank() {
+  const drafts = generatedDrafts.value.filter((question) => selected.value.includes(question.id));
+  await Promise.all(drafts.map((question) => createQuestion(route.params.bankId, {
+    title: question.title,
+    type: question.type,
+    stage: question.stage,
+    difficulty: question.difficulty,
+    options: question.options || [],
+    answer: question.answer || '',
+    analysis: question.analysis || '',
+    knowledge: question.knowledge ? [question.knowledge] : []
+  })));
+  notify(`已保存 ${drafts.length} 道题到数据库`);
+  router.push(`/question-banks/${route.params.bankId}`);
 }
 </script>
 

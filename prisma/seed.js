@@ -40,6 +40,7 @@ async function seed() {
   await prisma.learningProfile.deleteMany();
   await prisma.questionKnowledgePoint.deleteMany();
   await prisma.question.deleteMany();
+  await prisma.questionBank.deleteMany();
   await prisma.knowledgePoint.deleteMany();
   await prisma.classroomSession.deleteMany();
   await prisma.student.deleteMany();
@@ -78,6 +79,18 @@ async function seed() {
       }
     });
   }
+
+  await prisma.questionBank.create({
+    data: {
+      id: 'newton-laws-bank',
+      title: '\u725b\u987f\u5b9a\u5f8b\u8bfe\u5802\u9898\u5e93',
+      subject: '\u7269\u7406',
+      grade: '\u9ad8\u4e00',
+      usage: '\u8bfe\u524d / \u8bfe\u4e2d / \u8bfe\u540e',
+      description: '\u8986\u76d6\u725b\u987f\u7b2c\u4e8c\u5b9a\u5f8b\u3001\u53d7\u529b\u5206\u6790\u3001\u5408\u529b\u4e0e\u52a0\u901f\u5ea6\u65b9\u5411\u3001\u57fa\u7840\u8ba1\u7b97\u3002',
+      tags: ['\u725b\u987f\u7b2c\u4e8c\u5b9a\u5f8b', '\u53d7\u529b\u5206\u6790', '\u8bfe\u5802\u68c0\u6d4b']
+    }
+  });
 
   for (const student of newtonStudentProfiles) {
     const classId = classIdByName[student.className] || 'class-2026-physics-1';
@@ -153,7 +166,9 @@ async function seed() {
     await prisma.question.create({
       data: {
         id: question.id,
+        bankId: 'newton-laws-bank',
         courseId,
+        stage: question.type === 'calculation' ? '\u8bfe\u540e' : '\u8bfe\u4e2d',
         type: question.type,
         difficulty: question.difficulty,
         title: question.title,

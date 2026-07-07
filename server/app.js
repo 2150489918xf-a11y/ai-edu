@@ -12,7 +12,7 @@ function getPageParams(searchParams) {
   return { page, pageSize };
 }
 
-export function createLearningApiApp({ learningService, courseService, classService, studentService }) {
+export function createLearningApiApp({ learningService, courseService, classService, studentService, questionBankService }) {
   if (!learningService) {
     throw new Error('learningService is required');
   }
@@ -61,6 +61,75 @@ export function createLearningApiApp({ learningService, courseService, classServ
         const data = await courseService.createCourse(body);
         sendJson(res, 201, { data });
         return;
+      }
+
+      if (questionBankService && req.method === 'GET' && path === '/api/v1/question-banks') {
+        const { page, pageSize } = getPageParams(url.searchParams);
+        const result = await questionBankService.listBanks({
+          keyword: url.searchParams.get('keyword') || undefined,
+          status: url.searchParams.get('status') || undefined,
+          subject: url.searchParams.get('subject') || undefined,
+          grade: url.searchParams.get('grade') || undefined,
+          page,
+          pageSize
+        });
+        sendJson(res, 200, {
+          data: result.banks,
+          pagination: { page, pageSize, total: result.total }
+        });
+        return;
+      }
+
+      if (questionBankService && req.method === 'POST' && path === '/api/v1/question-banks') {
+        const body = await readJsonBody(req);
+        const data = await questionBankService.createBank(body);
+        sendJson(res, 201, { data });
+        return;
+      }
+
+      const questionBankQuestionMatch = path.match(/^\/api\/v1\/question-banks\/([^/]+)\/questions$/);
+      if (questionBankService && req.method === 'POST' && questionBankQuestionMatch) {
+        const body = await readJsonBody(req);
+        const data = await questionBankService.createQuestion(decodeURIComponent(questionBankQuestionMatch[1]), body);
+        sendJson(res, 201, { data });
+        return;
+      }
+
+      const questionBankMatch = path.match(/^\/api\/v1\/question-banks\/([^/]+)$/);
+      if (questionBankService && questionBankMatch) {
+        const bankId = decodeURIComponent(questionBankMatch[1]);
+        if (req.method === 'GET') {
+          const data = await questionBankService.getBank(bankId);
+          sendJson(res, 200, { data });
+          return;
+        }
+        if (req.method === 'PATCH') {
+          const body = await readJsonBody(req);
+          const data = await questionBankService.updateBank(bankId, body);
+          sendJson(res, 200, { data });
+          return;
+        }
+        if (req.method === 'DELETE') {
+          const data = await questionBankService.archiveBank(bankId);
+          sendJson(res, 200, { data });
+          return;
+        }
+      }
+
+      const questionMatch = path.match(/^\/api\/v1\/questions\/([^/]+)$/);
+      if (questionBankService && questionMatch) {
+        const questionId = decodeURIComponent(questionMatch[1]);
+        if (req.method === 'PATCH') {
+          const body = await readJsonBody(req);
+          const data = await questionBankService.updateQuestion(questionId, body);
+          sendJson(res, 200, { data });
+          return;
+        }
+        if (req.method === 'DELETE') {
+          const data = await questionBankService.archiveQuestion(questionId);
+          sendJson(res, 200, { data });
+          return;
+        }
       }
 
       const courseRestoreMatch = path.match(/^\/api\/v1\/courses\/([^/]+)\/restore$/);

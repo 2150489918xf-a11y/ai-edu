@@ -69,6 +69,23 @@ model Course {
   @@map("courses")
 }
 
+model QuestionBank {
+  id          String     @id @default(uuid())
+  title       String
+  subject     String
+  grade       String?
+  usage       String?
+  description String?
+  tags        Json       @default("[]")
+  status      String     @default("active")
+  deletedAt   DateTime?  @map("deleted_at")
+  questions   Question[]
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  @@map("question_banks")
+}
+
 model KnowledgePoint {
   id          String           @id @default(uuid())
   courseId    String           @map("course_id")
@@ -85,14 +102,20 @@ model KnowledgePoint {
 
 model Question {
   id              String                    @id @default(uuid())
-  courseId        String                    @map("course_id")
-  course          Course                    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  bankId          String?                   @map("bank_id")
+  bank            QuestionBank?             @relation(fields: [bankId], references: [id], onDelete: SetNull)
+  courseId        String?                   @map("course_id")
+  course          Course?                   @relation(fields: [courseId], references: [id], onDelete: SetNull)
   type            String
+  stage           String?
   difficulty      String
   title           String
   options         Json?
   answer          Json
   analysis        String?
+  knowledge       Json?
+  status          String                    @default("active")
+  deletedAt       DateTime?                 @map("deleted_at")
   accuracy        Int?
   avgTimeSeconds  Int?                      @map("avg_time_seconds")
   weakPoint       String?                   @map("weak_point")

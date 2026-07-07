@@ -1,42 +1,121 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { getBank, getCourseQuestions, getQuestionsByBank, notify, referenceQuestionToCourse, store } from '../data/mockStore';
+import { archiveQuestion, createQuestion, getQuestionBank } from '../data/questionBankApiClient';
+import { notify } from '../data/mockStore';
 
 const route = useRoute();
 const router = useRouter();
 const activeStage = ref('全部');
-const referenceMode = ref(false);
-const selectedCourseId = ref(store.selectedCourseId);
-const selectedQuestionIds = ref([]);
+const keyword = ref('');
+const loading = ref(false);
+const deletingId = ref('');
+const showCreateDialog = ref(false);
+const bank = ref(null);
+const createForm = ref({
+  title: '',
+  type: '单选题',
+  stage: '课中',
+  difficulty: '基础',
+  optionsText: '',
+  answer: '',
+  analysis: '',
+  knowledgeText: ''
+});
 const stages = ['全部', '课前', '课中', '课后'];
 
-const bank = computed(() => getBank(route.params.bankId));
-const courseQuestions = computed(() => getCourseQuestions(selectedCourseId.value));
 const questions = computed(() => {
-  const list = getQuestionsByBank(bank.value.id);
-  return activeStage.value === '全部' ? list : list.filter((question) => question.stage === activeStage.value);
+  const list = bank.value?.questions || [];
+  return list.filter((question) => {
+    const stageMatched = activeStage.value === '全部' || question.stage === activeStage.value;
+    const search = keyword.value.trim().toLowerCase();
+    const keywordMatched = !search || `${question.title} ${question.analysis} ${question.knowledge?.join(' ')}`.toLowerCase().includes(search);
+    return stageMatched && keywordMatched;
+  });
 });
-const selectedCourse = computed(() => store.courses.find((course) => course.id === selectedCourseId.value) || store.courses[0]);
 
-function toggleReferenceMode() {
-  referenceMode.value = !referenceMode.value;
-  selectedCourseId.value = store.selectedCourseId;
-  selectedQuestionIds.value = [];
+const bankTags = computed(() => bank.value?.tags?.length ? bank.value.tags : ['未设置标签']);
+
+function resetCreateForm() {
+  createForm.value = {
+    title: '',
+    type: '单选题',
+    stage: '课中',
+    difficulty: '基础',
+    optionsText: '',
+    answer: '',
+    analysis: '',
+    knowledgeText: ''
+  };
 }
 
-function toggleQuestion(questionId) {
-  selectedQuestionIds.value = selectedQuestionIds.value.includes(questionId)
-    ? selectedQuestionIds.value.filter((id) => id !== questionId)
-    : [...selectedQuestionIds.value, questionId];
+function parseList(text) {
+  return String(text || '')
+    .split(/[\n,，、]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
-function referenceSelectedQuestions() {
-  selectedQuestionIds.value.forEach((questionId) => referenceQuestionToCourse(questionId, selectedCourseId.value));
-  notify(`已引用 ${selectedQuestionIds.value.length} 道题到「${selectedCourse.value.shortTitle}」`);
-  selectedQuestionIds.value = [];
-  referenceMode.value = false;
+async function loadBank() {
+  loading.value = true;
+  try {
+    bank.value = await getQuestionBank(route.params.bankId);
+  } catch (error) {
+    notify(error.message || '题库加载失败');
+    bank.value = null;
+  } finally {
+    loading.value = false;
+  }
 }
+
+function openCreateDialog() {
+  resetCreateForm();
+  showCreateDialog.value = true;
+}
+
+async function submitQuestion() {
+  const title = createForm.value.title.trim();
+  if (!title) {
+    notify('请先填写题干');
+    return;
+  }
+  try {
+    await createQuestion(bank.value.id, {
+      title,
+      type: createForm.value.type.trim(),
+      stage: createForm.value.stage.trim(),
+      difficulty: createForm.value.difficulty.trim(),
+      options: parseList(createForm.value.optionsText),
+      answer: createForm.value.answer.trim(),
+      analysis: createForm.value.analysis.trim(),
+      knowledge: parseList(createForm.value.knowledgeText)
+    });
+    showCreateDialog.value = false;
+    notify('题目已保存到数据库');
+    await loadBank();
+  } catch (error) {
+    notify(error.message || '题目保存失败');
+  }
+}
+
+async function removeQuestion(question) {
+  if (deletingId.value) return;
+  const confirmed = window.confirm(`确定删除这道题吗？\n${question.title}`);
+  if (!confirmed) return;
+  deletingId.value = question.id;
+  try {
+    await archiveQuestion(question.id);
+    notify('题目已删除');
+    await loadBank();
+  } catch (error) {
+    notify(error.message || '题目删除失败');
+  } finally {
+    deletingId.value = '';
+  }
+}
+
+onMounted(loadBank);
+watch(() => route.params.bankId, loadBank);
 </script>
 
 <template>
@@ -44,24 +123,24 @@ function referenceSelectedQuestions() {
     <section class="module-head">
       <div>
         <h1>题库</h1>
-        <p>{{ bank.desc }}</p>
+        <p>{{ bank?.description || '题目已存入数据库，可手动新增和删除。' }}</p>
       </div>
       <div class="hero-actions">
         <button class="soft-btn back-btn" type="button" @click="router.push('/question-banks')">
           <span class="material-symbols-outlined">chevron_left</span>
           返回题库
         </button>
-        <button class="primary-btn" type="button" @click="router.push(`/question-banks/${bank.id}/generate`)">
+        <button class="primary-btn" type="button" :disabled="!bank" @click="openCreateDialog">
+          <span class="material-symbols-outlined">add</span>
+          手动新增题目
+        </button>
+        <button class="soft-btn" type="button" :disabled="!bank" @click="router.push(`/question-banks/${bank.id}/generate`)">
           <span class="material-symbols-outlined">auto_awesome</span>
           AI 生成题目
         </button>
-        <button class="soft-btn" type="button" @click="router.push(`/question-banks/${bank.id}/paper`)">
+        <button class="soft-btn" type="button" :disabled="!bank" @click="router.push(`/question-banks/${bank.id}/paper`)">
           <span class="material-symbols-outlined">assignment</span>
           智能组卷
-        </button>
-        <button class="soft-btn" type="button" :class="{ active: referenceMode }" @click="toggleReferenceMode">
-          <span class="material-symbols-outlined">checklist</span>
-          {{ referenceMode ? '取消选择' : '选择引用' }}
         </button>
       </div>
     </section>
@@ -80,93 +159,133 @@ function referenceSelectedQuestions() {
       </div>
       <label class="module-search">
         <span class="material-symbols-outlined">search</span>
-        <input type="search" placeholder="搜索题干、答案、知识点..." />
+        <input v-model="keyword" type="search" placeholder="搜索题干、答案、知识点..." />
       </label>
-      <button class="course-filter" type="button" @click="notify('已按正确率升序排列')">
-        正确率
-        <span class="material-symbols-outlined">expand_more</span>
+      <button class="course-filter" type="button" :disabled="loading" @click="loadBank">
+        {{ loading ? '加载中' : '刷新' }}
+        <span class="material-symbols-outlined">sync</span>
       </button>
     </section>
 
-    <section class="two-col">
+    <section v-if="!bank && !loading" class="course-empty">
+      <span class="material-symbols-outlined">quiz</span>
+      <strong>题库不存在</strong>
+      <p>请返回题库列表选择数据库里的题库。</p>
+    </section>
+
+    <section v-else class="two-col">
       <div class="list-panel">
+        <article v-if="!loading && !questions.length" class="course-empty">
+          <span class="material-symbols-outlined">edit_note</span>
+          <strong>暂无题目</strong>
+          <p>点击“手动新增题目”，题目会保存到当前题库的数据库记录里。</p>
+        </article>
         <article
           v-for="question in questions"
           :key="question.id"
           class="question-row"
-          :class="{ picking: referenceMode, selected: selectedQuestionIds.includes(question.id) }"
         >
-          <button
-            v-if="referenceMode"
-            class="reference-check"
-            type="button"
-            :aria-label="`选择 ${question.title}`"
-            @click="toggleQuestion(question.id)"
-          >
-            <span class="material-symbols-outlined">check</span>
-          </button>
           <div>
             <div class="card-meta" style="margin-top:0">
-              <span>{{ question.stage }}</span>
+              <span>{{ question.stage || '未设置阶段' }}</span>
               <span>{{ question.type }}</span>
               <span>{{ question.difficulty }}</span>
-              <span>正确率 {{ question.accuracy }}%</span>
+              <span v-if="question.accuracy !== null">正确率 {{ question.accuracy }}%</span>
             </div>
             <h3>{{ question.title }}</h3>
-            <p>{{ question.options.join('　') }}</p>
+            <p>{{ question.options?.length ? question.options.join('　') : '无选项题，查看答案解析。' }}</p>
+            <p v-if="question.answer" class="question-answer">答案：{{ question.answer }}</p>
           </div>
           <div class="row-actions">
-            <button class="soft-btn" type="button" @click="router.push(`/questions/${question.id}`)">查看详情</button>
+            <button class="soft-btn" type="button" @click="notify(question.analysis || '暂无解析')">查看解析</button>
+            <button class="soft-btn danger" type="button" :disabled="deletingId === question.id" @click="removeQuestion(question)">
+              {{ deletingId === question.id ? '删除中' : '删除题目' }}
+            </button>
           </div>
         </article>
       </div>
 
       <aside class="surface-card side-panel">
-        <span class="small-chip">{{ referenceMode ? '引用到课程' : '题库概览' }}</span>
-        <h2>{{ referenceMode ? `${selectedQuestionIds.length} 道已选` : `${bank.count} 道题` }}</h2>
-        <p>{{ referenceMode ? '选择目标课程后，题目会进入该课程的题目与分析页。' : `${bank.subject} ・ ${bank.usage} ・ ${bank.updatedAt}` }}</p>
-        <div v-if="referenceMode" class="course-picker">
-          <button
-            v-for="course in store.courses"
-            :key="course.id"
-            :class="{ active: selectedCourseId === course.id }"
-            type="button"
-            @click="selectedCourseId = course.id"
-          >
-            <strong>{{ course.shortTitle }}</strong>
-            <span>{{ course.subject }} ・ {{ course.duration }}</span>
-          </button>
-        </div>
+        <span class="small-chip">题库概览</span>
+        <h2>{{ bank?.count || 0 }} 道题</h2>
+        <p>{{ bank ? `${bank.subject} · ${bank.usage || '未设置用途'} · ${bank.grade || '未分级'}` : '加载中' }}</p>
         <div class="tag-cloud">
-          <span v-for="tag in bank.tags" :key="tag">{{ tag }}</span>
+          <span v-for="tag in bankTags" :key="tag">{{ tag }}</span>
         </div>
         <div class="side-stat">
-          <strong>{{ courseQuestions.length }}</strong><span>已进题目与分析</span>
+          <strong>{{ questions.length }}</strong><span>当前筛选结果</span>
         </div>
         <div class="side-stat">
-          <strong>6</strong><span>建议生成变式题</span>
+          <strong>{{ bank?.status === 'active' ? '启用' : '归档' }}</strong><span>数据库状态</span>
         </div>
-        <button
-          v-if="referenceMode"
-          class="outline-generate-btn"
-          type="button"
-          :disabled="!selectedQuestionIds.length"
-          @click="referenceSelectedQuestions"
-        >
-          <span class="material-symbols-outlined">playlist_add_check</span>
-          引用到课程
-        </button>
-        <div v-else class="side-actions">
-          <button class="outline-generate-btn" type="button" @click="router.push(`/question-banks/${bank.id}/paper`)">
+        <div class="side-actions">
+          <button class="outline-generate-btn" type="button" :disabled="!bank" @click="openCreateDialog">
+            <span class="material-symbols-outlined">add_circle</span>
+            新增题目
+          </button>
+          <button class="outline-generate-btn" type="button" :disabled="!bank" @click="router.push(`/question-banks/${bank.id}/paper`)">
             <span class="material-symbols-outlined">assignment</span>
             智能组卷
           </button>
-          <button class="outline-generate-btn" type="button" @click="router.push(`/question-banks/${bank.id}/generate`)">
-            <span class="material-symbols-outlined">auto_awesome</span>
-            生成同类题
-          </button>
         </div>
       </aside>
+    </section>
+
+    <section v-if="showCreateDialog" class="course-dialog-backdrop" role="presentation" @click.self="showCreateDialog = false">
+      <form class="course-dialog" @submit.prevent="submitQuestion">
+        <header>
+          <div>
+            <h2>新增题目</h2>
+            <p>题目会保存到当前题库：{{ bank?.title }}</p>
+          </div>
+          <button class="dialog-icon-btn" type="button" aria-label="关闭" @click="showCreateDialog = false">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </header>
+
+        <div class="course-form-grid">
+          <label class="course-field wide">
+            <span>题干</span>
+            <textarea v-model="createForm.title" rows="3" placeholder="请输入题干"></textarea>
+          </label>
+          <label class="course-field">
+            <span>题型</span>
+            <input v-model="createForm.type" type="text" placeholder="单选题" />
+          </label>
+          <label class="course-field">
+            <span>阶段</span>
+            <input v-model="createForm.stage" type="text" placeholder="课中" />
+          </label>
+          <label class="course-field">
+            <span>难度</span>
+            <input v-model="createForm.difficulty" type="text" placeholder="基础" />
+          </label>
+          <label class="course-field wide">
+            <span>选项</span>
+            <textarea v-model="createForm.optionsText" rows="3" placeholder="每行一个选项，或用逗号分隔"></textarea>
+          </label>
+          <label class="course-field">
+            <span>答案</span>
+            <input v-model="createForm.answer" type="text" placeholder="C / 3 m/s² / 正确" />
+          </label>
+          <label class="course-field wide">
+            <span>解析</span>
+            <textarea v-model="createForm.analysis" rows="3" placeholder="请输入答案解析"></textarea>
+          </label>
+          <label class="course-field wide">
+            <span>知识点</span>
+            <input v-model="createForm.knowledgeText" type="text" placeholder="用逗号分隔，例如：F=ma，合外力计算" />
+          </label>
+        </div>
+
+        <footer>
+          <button class="soft-btn" type="button" @click="showCreateDialog = false">取消</button>
+          <button class="primary-btn" type="submit">
+            保存题目
+            <span class="material-symbols-outlined">save</span>
+          </button>
+        </footer>
+      </form>
     </section>
   </main>
 </template>
@@ -185,40 +304,20 @@ function referenceSelectedQuestions() {
   background: rgba(255, 255, 255, .72);
 }
 
-.bank-detail-page :deep(.question-row.picking) {
-  grid-template-columns: 34px minmax(0, 1fr) auto;
-}
-
-.bank-detail-page :deep(.question-row.selected) {
-  border-color: rgba(31, 181, 95, .52);
-  background: rgba(235, 249, 240, .84);
-}
-
-.reference-check {
-  display: grid;
-  width: 26px;
-  height: 26px;
-  place-items: center;
-  border: 2px solid rgba(16, 55, 35, .28);
-  border-radius: 50%;
-  background: #fff;
-  color: transparent;
-}
-
-.question-row.selected .reference-check {
-  border-color: var(--green);
-  background: var(--green);
-  color: #fff;
-}
-
-.reference-check .material-symbols-outlined {
-  font-size: 17px;
+.question-answer {
+  margin-top: 8px;
+  color: var(--green);
+  font-weight: 700;
 }
 
 .row-actions {
   display: grid;
   gap: 10px;
   min-width: 116px;
+}
+
+.soft-btn.danger {
+  color: #a54839;
 }
 
 .side-actions {
@@ -243,40 +342,6 @@ function referenceSelectedQuestions() {
   gap: 8px;
   flex-wrap: wrap;
   margin: 18px 0;
-}
-
-.course-picker {
-  display: grid;
-  gap: 10px;
-  margin: 18px 0;
-}
-
-.course-picker button {
-  display: grid;
-  gap: 5px;
-  min-height: 58px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, .72);
-  padding: 10px 12px;
-  text-align: left;
-}
-
-.course-picker button.active {
-  border-color: rgba(31, 181, 95, .52);
-  background: rgba(235, 249, 240, .88);
-  box-shadow: inset 0 0 0 1px rgba(47, 172, 102, .22);
-}
-
-.course-picker strong {
-  color: var(--ink);
-  font-size: 13px;
-}
-
-.course-picker span {
-  color: var(--soft);
-  font-size: 12px;
-  font-weight: 700;
 }
 
 .tag-cloud span {
@@ -307,9 +372,5 @@ function referenceSelectedQuestions() {
 .side-stat span {
   color: var(--muted);
   font-size: 13px;
-}
-
-.outline-generate-btn:disabled {
-  opacity: .6;
 }
 </style>

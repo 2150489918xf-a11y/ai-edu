@@ -1,11 +1,43 @@
 <script setup>
-import { ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { listQuestionBanks } from '../data/questionBankApiClient';
 import { getCourseQuestions, notify, store } from '../data/mockStore';
 
 const router = useRouter();
 const activeTab = ref('全部');
-const tabs = ['全部', '物理', '数学', '已被引用'];
+const keyword = ref('');
+const loading = ref(false);
+const banks = ref([]);
+const tabs = ['全部', '物理', '数学', '已归档'];
+
+const filteredBanks = computed(() => {
+  if (activeTab.value === '全部') return banks.value;
+  if (activeTab.value === '已归档') return banks.value.filter((bank) => bank.status === 'archived');
+  return banks.value.filter((bank) => bank.subject === activeTab.value);
+});
+
+const newtonCount = computed(() => banks.value
+  .filter((bank) => `${bank.title} ${bank.description} ${bank.tags?.join(' ')}`.includes('牛顿') || `${bank.title}`.toLowerCase().includes('newton'))
+  .reduce((sum, bank) => sum + Number(bank.count || 0), 0));
+
+async function loadBanks() {
+  loading.value = true;
+  try {
+    const result = await listQuestionBanks({
+      keyword: keyword.value.trim(),
+      status: activeTab.value === '已归档' ? 'archived' : 'active',
+      pageSize: 100
+    });
+    banks.value = result.data;
+  } catch (error) {
+    notify(error.message || '题库加载失败');
+  } finally {
+    loading.value = false;
+  }
+}
+
+onMounted(loadBanks);
 </script>
 
 <template>
@@ -13,12 +45,12 @@ const tabs = ['全部', '物理', '数学', '已被引用'];
     <section class="module-head">
       <div>
         <h1>题库</h1>
-        <p>按课程、知识点和课堂使用场景组织题目，支持 AI 生成、课程引用和学情分析。</p>
+        <p>题库和题目已接入数据库，可进入题库后手动增加或删除题目。</p>
       </div>
       <div class="hero-actions">
-        <button class="soft-btn" type="button" @click="notify('已同步最近课堂错题')">
+        <button class="soft-btn" type="button" :disabled="loading" @click="loadBanks">
           <span class="material-symbols-outlined">sync</span>
-          同步错题
+          刷新
         </button>
         <button class="primary-btn" type="button" @click="router.push('/question-banks/newton-laws-bank/generate')">
           <span class="material-symbols-outlined">auto_awesome</span>
@@ -29,11 +61,11 @@ const tabs = ['全部', '物理', '数学', '已被引用'];
 
     <section class="question-overview">
       <article>
-        <strong>{{ store.questionBanks.length }}</strong>
+        <strong>{{ banks.length }}</strong>
         <span>题库</span>
       </article>
       <article>
-        <strong>64</strong>
+        <strong>{{ newtonCount }}</strong>
         <span>牛顿相关题</span>
       </article>
       <article>
@@ -49,38 +81,44 @@ const tabs = ['全部', '物理', '数学', '已被引用'];
           :key="tab"
           :class="{ active: activeTab === tab }"
           type="button"
-          @click="activeTab = tab"
+          @click="activeTab = tab; loadBanks()"
         >
           {{ tab }}
         </button>
       </div>
       <label class="module-search">
         <span class="material-symbols-outlined">search</span>
-        <input type="search" placeholder="搜索题库、知识点..." />
+        <input v-model="keyword" type="search" placeholder="搜索题库、知识点..." @keydown.enter="loadBanks" />
       </label>
-      <button class="course-filter" type="button" @click="notify('已按最近使用排序')">
-        最近使用
-        <span class="material-symbols-outlined">expand_more</span>
+      <button class="course-filter" type="button" :disabled="loading" @click="loadBanks">
+        {{ loading ? '加载中' : '数据库' }}
+        <span class="material-symbols-outlined">database</span>
       </button>
     </section>
 
-    <section class="module-grid">
+    <section v-if="!loading && !filteredBanks.length" class="course-empty">
+      <span class="material-symbols-outlined">quiz</span>
+      <strong>暂无题库</strong>
+      <p>可以先通过后端接口或 seed 创建题库，进入题库后再手动维护题目。</p>
+    </section>
+
+    <section v-else class="module-grid">
       <article
-        v-for="bank in store.questionBanks"
+        v-for="bank in filteredBanks"
         :key="bank.id"
         class="module-card lift-card bank-card"
       >
         <div class="folder-preview">
           <span class="material-symbols-outlined">folder_open</span>
-          <strong>{{ bank.count }}</strong>
+          <strong>{{ bank.count || 0 }}</strong>
           <small>道题</small>
         </div>
         <h2>{{ bank.title }}</h2>
-        <p>{{ bank.desc }}</p>
+        <p>{{ bank.description || '暂无说明' }}</p>
         <div class="card-meta">
           <span>{{ bank.subject }}</span>
-          <span>{{ bank.usage }}</span>
-          <span>{{ bank.updatedAt }}</span>
+          <span>{{ bank.usage || '未设置用途' }}</span>
+          <span>{{ bank.grade || '未分级' }}</span>
         </div>
         <div class="card-actions">
           <button class="primary-btn" type="button" @click="router.push(`/question-banks/${bank.id}`)">进入题库</button>
@@ -101,8 +139,8 @@ const tabs = ['全部', '物理', '数学', '已被引用'];
         </div>
       </article>
       <article>
-        <span>最近高频错因</span>
-        <p>合力方向判断、摩擦力参与的 F=ma 计算、单位换算。</p>
+        <span>数据来源</span>
+        <p>题库列表与题目数量来自 PostgreSQL，新增和删除会即时写回数据库。</p>
       </article>
     </section>
   </main>
