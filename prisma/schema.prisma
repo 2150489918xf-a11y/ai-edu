@@ -7,12 +7,45 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  role         String
+  status       String   @default("active")
+  teacher      Teacher?
+  student      Student?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model Teacher {
+  id        String    @id @default(uuid())
+  userId    String?   @unique @map("user_id")
+  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  phone     String?
+  email     String?
+  avatarUrl String?   @map("avatar_url")
+  status    String    @default("active")
+  deletedAt DateTime? @map("deleted_at")
+  classes   Class[]
+  courses   Course[]
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@map("teachers")
+}
+
 model Class {
   id        String    @id @default(uuid())
   name      String
   grade     String
   subject   String
   teacherId String?   @map("teacher_id")
+  teacher   Teacher?  @relation(fields: [teacherId], references: [id], onDelete: SetNull)
   status    String    @default("active")
   deletedAt DateTime? @map("deleted_at")
   students  Student[]
@@ -25,6 +58,8 @@ model Class {
 
 model Student {
   id              String           @id @default(uuid())
+  userId          String?          @unique @map("user_id")
+  user            User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
   name            String
   classId         String           @map("class_id")
   class           Class            @relation(fields: [classId], references: [id], onDelete: Cascade)
@@ -34,6 +69,7 @@ model Student {
   status          String           @default("active")
   deletedAt       DateTime?        @map("deleted_at")
   answers         StudentAnswer[]
+  courseEnrollments StudentCourseEnrollment[]
   learningProfiles LearningProfile[]
   parentSummaries ParentSummary[]
   createdAt       DateTime         @default(now()) @map("created_at")
@@ -44,6 +80,8 @@ model Student {
 
 model Course {
   id              String             @id @default(uuid())
+  teacherId       String?            @map("teacher_id")
+  teacher         Teacher?           @relation(fields: [teacherId], references: [id], onDelete: SetNull)
   title           String
   subject         String
   grade           String
@@ -64,6 +102,7 @@ model Course {
   knowledgePoints KnowledgePoint[]
   questions       Question[]
   sessions        ClassroomSession[]
+  studentEnrollments StudentCourseEnrollment[]
   learningProfiles LearningProfile[]
   parentSummaries ParentSummary[]
   createdAt       DateTime           @default(now()) @map("created_at")
@@ -150,10 +189,27 @@ model ClassroomSession {
   title     String
   status    String
   answers   StudentAnswer[]
+  studentEnrollments StudentCourseEnrollment[]
   startedAt DateTime?       @map("started_at")
   endedAt   DateTime?       @map("ended_at")
 
   @@map("classroom_sessions")
+}
+
+model StudentCourseEnrollment {
+  id        String            @id @default(uuid())
+  studentId String            @map("student_id")
+  courseId  String            @map("course_id")
+  sessionId String?           @unique @map("session_id")
+  student   Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course    Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  session   ClassroomSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  status    String            @default("active")
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+
+  @@unique([studentId, courseId])
+  @@map("student_course_enrollments")
 }
 
 model StudentAnswer {

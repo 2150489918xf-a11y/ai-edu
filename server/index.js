@@ -11,6 +11,11 @@ import { createAiQuestionService } from './services/aiQuestionService.js';
 import { createAiLessonPlanService } from './services/aiLessonPlanService.js';
 import { createQuestionBankService } from './services/questionBankService.js';
 import { createStudentService } from './services/studentService.js';
+import { createStudentLearningService } from './services/studentLearningService.js';
+import { createStudentAnalysisService } from './services/studentAnalysisService.js';
+import { createAiStudentTutorService } from './services/aiStudentTutorService.js';
+import { createAuthService } from './services/authService.js';
+import { createAdminService } from './services/adminService.js';
 
 loadEnvFile();
 
@@ -23,18 +28,28 @@ const classService = createClassService(prisma);
 const studentService = createStudentService(prisma);
 const knowledgeService = createKnowledgeService(prisma);
 const questionBankService = createQuestionBankService(prisma);
+const studentLearningService = createStudentLearningService(prisma);
+const studentAnalysisService = createStudentAnalysisService(prisma);
+const authService = createAuthService(prisma);
+const adminService = createAdminService(prisma);
 const aiMindMapService = createAiMindMapService();
 const aiQuestionService = createAiQuestionService();
 const aiLessonPlanService = createAiLessonPlanService();
+const aiStudentTutorService = createAiStudentTutorService();
 const app = createLearningApiApp({
+  adminService,
+  authService,
   learningService,
   courseService,
   classService,
   studentService,
+  studentLearningService,
+  studentAnalysisService,
   knowledgeService,
   questionBankService,
   aiMindMapService,
   aiQuestionService,
+  aiStudentTutorService,
   aiLessonPlanService
 });
 const server = createServer(app);

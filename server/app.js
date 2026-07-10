@@ -12,15 +12,26 @@ function getPageParams(searchParams) {
   return { page, pageSize };
 }
 
+function getBearerToken(req) {
+  const authorization = req.headers.authorization || '';
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() : '';
+}
+
 export function createLearningApiApp({
+  adminService,
+  authService,
   learningService,
   courseService,
   classService,
   studentService,
+  studentLearningService,
+  studentAnalysisService,
   knowledgeService,
   questionBankService,
   aiMindMapService,
   aiQuestionService,
+  aiStudentTutorService,
   aiLessonPlanService
 }) {
   if (!learningService) {
@@ -42,6 +53,222 @@ export function createLearningApiApp({
     try {
       if (req.method === 'GET' && path === '/api/v1/health') {
         sendJson(res, 200, { data: { ok: true } });
+        return;
+      }
+
+      if (authService && req.method === 'POST' && path === '/api/v1/auth/login') {
+        const body = await readJsonBody(req);
+        const data = await authService.login(body);
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      if (authService && req.method === 'GET' && path === '/api/v1/auth/me') {
+        const data = await authService.getCurrentUser(getBearerToken(req));
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      if (adminService && req.method === 'GET' && path === '/api/v1/admin/summary') {
+        const data = await adminService.getSummary();
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      if (adminService && req.method === 'GET' && path === '/api/v1/admin/teachers') {
+        const { page, pageSize } = getPageParams(url.searchParams);
+        const result = await adminService.listTeachers({
+          keyword: url.searchParams.get('keyword') || undefined,
+          status: url.searchParams.get('status') || undefined,
+          page,
+          pageSize
+        });
+        sendJson(res, 200, {
+          data: result.teachers,
+          pagination: { page, pageSize, total: result.total }
+        });
+        return;
+      }
+
+      if (adminService && req.method === 'POST' && path === '/api/v1/admin/teachers') {
+        const body = await readJsonBody(req);
+        const data = await adminService.createTeacher(body);
+        sendJson(res, 201, { data });
+        return;
+      }
+
+      const adminTeacherRestoreMatch = path.match(/^\/api\/v1\/admin\/teachers\/([^/]+)\/restore$/);
+      if (adminService && req.method === 'POST' && adminTeacherRestoreMatch) {
+        const data = await adminService.restoreTeacher(decodeURIComponent(adminTeacherRestoreMatch[1]));
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      const adminTeacherMatch = path.match(/^\/api\/v1\/admin\/teachers\/([^/]+)$/);
+      if (adminService && adminTeacherMatch) {
+        const teacherId = decodeURIComponent(adminTeacherMatch[1]);
+        if (req.method === 'PATCH') {
+          const body = await readJsonBody(req);
+          const data = await adminService.updateTeacher(teacherId, body);
+          sendJson(res, 200, { data });
+          return;
+        }
+        if (req.method === 'DELETE') {
+          const data = await adminService.archiveTeacher(teacherId);
+          sendJson(res, 200, { data });
+          return;
+        }
+      }
+
+      const adminStudentEnrollmentMatch = path.match(/^\/api\/v1\/admin\/students\/([^/]+)\/enrollments$/);
+      if (adminService && adminStudentEnrollmentMatch) {
+        const studentId = decodeURIComponent(adminStudentEnrollmentMatch[1]);
+        if (req.method === 'GET') {
+          const data = await adminService.listStudentEnrollments(studentId);
+          sendJson(res, 200, { data });
+          return;
+        }
+        if (req.method === 'POST') {
+          const body = await readJsonBody(req);
+          const data = await adminService.assignStudentCourse(studentId, body);
+          sendJson(res, 201, { data });
+          return;
+        }
+      }
+
+      const adminStudentEnrollmentCourseMatch = path.match(/^\/api\/v1\/admin\/students\/([^/]+)\/enrollments\/([^/]+)$/);
+      if (adminService && req.method === 'DELETE' && adminStudentEnrollmentCourseMatch) {
+        const data = await adminService.removeStudentCourse(
+          decodeURIComponent(adminStudentEnrollmentCourseMatch[1]),
+          decodeURIComponent(adminStudentEnrollmentCourseMatch[2])
+        );
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      if (studentLearningService && req.method === 'GET' && path === '/api/v1/student/courses') {
+        const data = await studentLearningService.listCourses(url.searchParams.get('studentId') || undefined);
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      if (studentLearningService && req.method === 'GET' && path === '/api/v1/student/dashboard') {
+        const data = await studentLearningService.getDashboard(url.searchParams.get('studentId') || undefined);
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      if (studentAnalysisService && req.method === 'GET' && path === '/api/v1/student/analysis') {
+        const data = await studentAnalysisService.getOverview(url.searchParams.get('studentId') || undefined);
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      const studentAnalysisGenerateMatch = path.match(/^\/api\/v1\/student\/analysis\/courses\/([^/]+)\/generate$/);
+      if (studentAnalysisService && req.method === 'POST' && studentAnalysisGenerateMatch) {
+        const body = await readJsonBody(req);
+        const data = await studentAnalysisService.generateCourseProfile(
+          body.studentId || url.searchParams.get('studentId') || undefined,
+          decodeURIComponent(studentAnalysisGenerateMatch[1])
+        );
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      const studentAnalysisCourseMatch = path.match(/^\/api\/v1\/student\/analysis\/courses\/([^/]+)$/);
+      if (studentAnalysisService && req.method === 'GET' && studentAnalysisCourseMatch) {
+        const data = await studentAnalysisService.getCourseAnalysis(
+          url.searchParams.get('studentId') || undefined,
+          decodeURIComponent(studentAnalysisCourseMatch[1])
+        );
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      if (studentLearningService && req.method === 'GET' && path === '/api/v1/student/course-catalog') {
+        const data = await studentLearningService.listCourseCatalog(url.searchParams.get('studentId') || undefined);
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      if (studentLearningService && req.method === 'POST' && path === '/api/v1/student/courses/join') {
+        const body = await readJsonBody(req);
+        const data = await studentLearningService.joinCourse(body.studentId, body);
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      const studentCourseMatch = path.match(/^\/api\/v1\/student\/courses\/([^/]+)$/);
+      if (studentLearningService && req.method === 'GET' && studentCourseMatch) {
+        const data = await studentLearningService.getCourse(
+          url.searchParams.get('studentId') || undefined,
+          decodeURIComponent(studentCourseMatch[1])
+        );
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      const studentTaskMatch = path.match(/^\/api\/v1\/student\/tasks\/([^/]+)$/);
+      if (studentLearningService && req.method === 'GET' && studentTaskMatch) {
+        const data = await studentLearningService.getTask(
+          url.searchParams.get('studentId') || undefined,
+          decodeURIComponent(studentTaskMatch[1])
+        );
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      const studentTaskAnswerMatch = path.match(/^\/api\/v1\/student\/tasks\/([^/]+)\/answers$/);
+      if (studentLearningService && req.method === 'POST' && studentTaskAnswerMatch) {
+        const body = await readJsonBody(req);
+        const data = await studentLearningService.saveAnswer(
+          body.studentId,
+          decodeURIComponent(studentTaskAnswerMatch[1]),
+          body
+        );
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      const studentTaskSubmitMatch = path.match(/^\/api\/v1\/student\/tasks\/([^/]+)\/submit$/);
+      if (studentLearningService && req.method === 'POST' && studentTaskSubmitMatch) {
+        const body = await readJsonBody(req);
+        const data = await studentLearningService.submitTask(
+          body.studentId,
+          decodeURIComponent(studentTaskSubmitMatch[1])
+        );
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      if (studentLearningService && aiStudentTutorService && req.method === 'POST' && path === '/api/v1/student/ai/chat-stream') {
+        const body = await readJsonBody(req);
+        let taskContext = null;
+        if (body.studentId && body.taskId) {
+          taskContext = await studentLearningService.getTask(body.studentId, body.taskId);
+        }
+        const questionId = body.questionId || body.question?.id;
+        const question = questionId && taskContext
+          ? taskContext.questions.find((item) => item.id === questionId) || body.question
+          : body.question;
+        startSse(res);
+        try {
+          await aiStudentTutorService.streamChat({
+            ...body,
+            course: body.course || taskContext?.course || null,
+            question
+          }, {
+            onDelta: (text) => sendSse(res, 'delta', { text }),
+            onDone: (meta) => sendSse(res, 'done', meta)
+          });
+        } catch (error) {
+          sendSse(res, 'error', {
+            code: error.code || 'AI_STREAM_ERROR',
+            message: error.message || 'AI student chat stream failed'
+          });
+        } finally {
+          res.end();
+        }
         return;
       }
 

@@ -1,0 +1,42 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+const routerSource = readFileSync(new URL('../src/router.js', import.meta.url), 'utf8');
+const appSource = readFileSync(new URL('../src/App.vue', import.meta.url), 'utf8');
+const coursesSource = readFileSync(new URL('../src/pages/student/StudentCoursesPage.vue', import.meta.url), 'utf8');
+const analysisSource = readFileSync(new URL('../src/pages/student/StudentAnalysisPage.vue', import.meta.url), 'utf8');
+const courseDetailSource = readFileSync(new URL('../src/pages/student/StudentCourseDetailPage.vue', import.meta.url), 'utf8');
+const practiceSource = readFileSync(new URL('../src/pages/student/StudentPracticePage.vue', import.meta.url), 'utf8');
+
+assert.ok(routerSource.includes("path: '/student/courses'"), 'student courses route should be independent');
+assert.ok(routerSource.includes("path: '/student/analysis'"), 'student analysis route should exist');
+assert.ok(routerSource.includes("path: '/student/courses/:courseId'"), 'student course detail route should exist');
+assert.ok(routerSource.includes("path: '/student/tasks/:taskId/practice'"), 'student practice route should exist');
+assert.ok(!appSource.includes("to: '/student/courses'"), 'teacher navigation should not link to student app');
+
+assert.ok(coursesSource.includes('getStudentDashboard'), 'student courses page should load student dashboard data');
+assert.ok(!coursesSource.includes('listStudentCourseCatalog'), 'student courses page should not load a joinable course catalog');
+assert.ok(!coursesSource.includes('joinStudentCourse'), 'student courses page should not allow students to self-join courses');
+assert.ok(coursesSource.includes('logout'), 'student courses page should clear auth session on logout');
+assert.ok(coursesSource.includes("router.replace('/student/login')"), 'student logout should return to student login');
+assert.ok(!coursesSource.includes('class="student-toolbar"'), 'student courses page should not render the old refresh toolbar card');
+assert.ok(coursesSource.includes('height: 100vh') && coursesSource.includes('overflow-y: auto'), 'student courses page should use an internal scroll container');
+assert.ok(coursesSource.includes('学生档案') && coursesSource.includes('所在班级'), 'student courses page should show prominent student identity');
+assert.ok(!coursesSource.includes('课程中心') && !coursesSource.includes('可加入课程'), 'student courses page should not show course catalog controls');
+assert.ok(coursesSource.includes('学情分析') && coursesSource.includes("path: '/student/analysis'"), 'student courses page should show learning analysis entry card');
+assert.ok(coursesSource.includes('任课老师'), 'joined course cards should still show course-level teacher');
+assert.ok(!coursesSource.includes('<dt>任课老师</dt>\\n            <dd>{{ profileTeacher }}</dd>'), 'student profile should not show a single teacher');
+assert.ok(analysisSource.includes('getStudentAnalysis') && analysisSource.includes('getStudentCourseAnalysis'), 'student analysis page should load overview and course detail data');
+assert.ok(analysisSource.includes('generateStudentCourseProfile'), 'student analysis page should generate AI learning profile');
+assert.ok(analysisSource.includes('AI 学生画像') && analysisSource.includes('错题记录'), 'student analysis page should display profile and wrong question sections');
+assert.ok(analysisSource.includes('position: sticky') && analysisSource.includes('course-list-panel'), 'student analysis course profile panel should stick while scrolling');
+assert.ok(analysisSource.includes('radar-chart') && analysisSource.includes('knowledge-columns') && analysisSource.includes('answer-donut'), 'student analysis page should show visual course insight charts');
+assert.ok(courseDetailSource.includes('getStudentCourse'), 'student course detail page should load course tasks');
+assert.ok(practiceSource.includes('getStudentTask'), 'practice page should load task questions');
+assert.ok(practiceSource.includes('streamStudentAiChat'), 'practice page should stream AI tutor replies');
+assert.ok(practiceSource.includes('上一题') && practiceSource.includes('下一题'), 'practice page should support previous and next question navigation');
+assert.ok(practiceSource.includes('question-nav'), 'practice page should include a question navigation sidebar');
+assert.ok(practiceSource.includes('ai-tutor-panel'), 'practice page should include an AI tutor sidebar');
+assert.ok(practiceSource.includes('saveStudentAnswer') && practiceSource.includes('submitStudentTask'), 'practice page should save answers and submit tasks');
+
+console.log('student page contracts passed');

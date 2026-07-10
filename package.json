@@ -9,6 +9,7 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "node prisma/seed.js",
+    "db:dev-data": "node prisma/devData.js",
     "test:backend": "node tests/backendLearningApi.test.mjs",
     "test:courses": "node tests/courseCrudApi.test.mjs && node tests/courseCrudDb.test.mjs",
     "build": "vite build",

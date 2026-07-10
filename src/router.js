@@ -1,11 +1,13 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import AfterClassPage from './pages/AfterClassPage.vue';
+import AdminOfficePage from './pages/admin/AdminOfficePage.vue';
 import CoursesPage from './pages/CoursesPage.vue';
 import HomePage from './pages/HomePage.vue';
 import InClassPlayPage from './pages/InClassPlayPage.vue';
 import InClassPptsPage from './pages/InClassPptsPage.vue';
 import KnowledgeBasePage from './pages/KnowledgeBasePage.vue';
 import LessonPlanPage from './pages/LessonPlanPage.vue';
+import LoginPage from './pages/LoginPage.vue';
 import MindMapGeneratePage from './pages/MindMapGeneratePage.vue';
 import PaperGeneratePage from './pages/PaperGeneratePage.vue';
 import PptGeneratePage from './pages/PptGeneratePage.vue';
@@ -16,12 +18,20 @@ import QuestionDetailPage from './pages/QuestionDetailPage.vue';
 import QuestionGeneratePage from './pages/QuestionGeneratePage.vue';
 import StageAnalysisPage from './pages/StageAnalysisPage.vue';
 import StudentClassroomPage from './pages/StudentClassroomPage.vue';
+import StudentAnalysisPage from './pages/student/StudentAnalysisPage.vue';
+import StudentCourseDetailPage from './pages/student/StudentCourseDetailPage.vue';
+import StudentCoursesPage from './pages/student/StudentCoursesPage.vue';
+import StudentPracticePage from './pages/student/StudentPracticePage.vue';
 import WorkspacePage from './pages/WorkspacePage.vue';
+import { getAuthToken, getStoredAuthUser } from './data/authApiClient';
 import { createOutlineDraftCourse, notify } from './data/mockStore';
 
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
+    { path: '/login', name: 'login', component: LoginPage, meta: { fullscreen: true } },
+    { path: '/admin/login', name: 'admin-login', component: LoginPage, meta: { fullscreen: true } },
+    { path: '/admin', name: 'admin-office', component: AdminOfficePage, meta: { fullscreen: true } },
     { path: '/', name: 'home', component: HomePage },
     { path: '/preclass/courses', name: 'courses', component: CoursesPage },
     {
@@ -46,7 +56,13 @@ export const router = createRouter({
     { path: '/questions/:questionId', name: 'question-detail', component: QuestionDetailPage },
     { path: '/in-class/ppts', name: 'in-class-ppts', component: InClassPptsPage },
     { path: '/in-class/play/:pptId', name: 'in-class-play', component: InClassPlayPage, meta: { fullscreen: true } },
-    { path: '/student', name: 'student-classroom', component: StudentClassroomPage, meta: { fullscreen: true } },
+    { path: '/student/login', name: 'student-login', component: LoginPage, meta: { fullscreen: true } },
+    { path: '/student', redirect: '/student/courses' },
+    { path: '/student/courses', name: 'student-courses', component: StudentCoursesPage, meta: { fullscreen: true } },
+    { path: '/student/analysis', name: 'student-analysis', component: StudentAnalysisPage, meta: { fullscreen: true } },
+    { path: '/student/courses/:courseId', name: 'student-course-detail', component: StudentCourseDetailPage, meta: { fullscreen: true } },
+    { path: '/student/tasks/:taskId/practice', name: 'student-practice', component: StudentPracticePage, meta: { fullscreen: true } },
+    { path: '/student/classroom', name: 'student-classroom', component: StudentClassroomPage, meta: { fullscreen: true } },
     { path: '/learning-analysis', name: 'learning-analysis', component: AfterClassPage },
     { path: '/after-class', name: 'after-class', component: AfterClassPage },
     { path: '/after-class/:courseId/analysis', redirect: (to) => `/preclass/courses/${to.params.courseId}/analysis` },
@@ -56,4 +72,37 @@ export const router = createRouter({
   scrollBehavior() {
     return { top: 0 };
   }
+});
+
+function getLoggedInRole() {
+  if (!getAuthToken()) return '';
+  return getStoredAuthUser()?.user?.role || '';
+}
+
+router.beforeEach((to) => {
+  const isStudentLogin = to.path === '/student/login';
+  const isTeacherLogin = to.path === '/login';
+  const isAdminLogin = to.path === '/admin/login';
+  const isLoginRoute = isStudentLogin || isTeacherLogin || isAdminLogin;
+  const isStudentRoute = to.path.startsWith('/student');
+  const isAdminRoute = to.path.startsWith('/admin');
+  const role = getLoggedInRole();
+
+  if (isLoginRoute) {
+    if (role === 'student' && !isStudentLogin) return '/student/courses';
+    if (role === 'teacher' && !isTeacherLogin) return '/';
+    if (role === 'admin' && !isAdminLogin) return '/admin';
+    return true;
+  }
+
+  if (!role) {
+    if (isStudentRoute) return '/student/login';
+    if (isAdminRoute) return '/admin/login';
+    return '/login';
+  }
+
+  if (isStudentRoute && role !== 'student') return '/student/login';
+  if (isAdminRoute && role !== 'admin') return '/admin/login';
+  if (!isStudentRoute && !isAdminRoute && role !== 'teacher') return '/login';
+  return true;
 });

@@ -6,6 +6,7 @@ import {
   newtonClassLearningAnalysis,
   newtonStudentProfiles
 } from '../src/data/teachingMockData.js';
+import { hashPassword } from '../server/services/authService.js';
 
 loadEnvFile();
 
@@ -58,10 +59,52 @@ async function seed() {
   await prisma.question.deleteMany();
   await prisma.questionBank.deleteMany();
   await prisma.knowledgePoint.deleteMany();
+  await prisma.studentCourseEnrollment.deleteMany();
   await prisma.classroomSession.deleteMany();
   await prisma.student.deleteMany();
   await prisma.class.deleteMany();
   await prisma.course.deleteMany();
+  await prisma.teacher.deleteMany();
+  await prisma.user.deleteMany();
+
+  await prisma.user.createMany({
+    data: [
+      {
+        id: 'user-admin-office',
+        username: 'admin-office',
+        passwordHash: hashPassword('admin123', 'seed-admin-office'),
+        role: 'admin'
+      },
+      {
+        id: 'user-teacher-wang',
+        username: 'teacher-wang',
+        passwordHash: hashPassword('teacher123', 'seed-teacher-wang'),
+        role: 'teacher'
+      },
+      {
+        id: 'user-stu-chenyu',
+        username: 'stu-chenyu',
+        passwordHash: hashPassword('student123', 'seed-stu-chenyu'),
+        role: 'student'
+      },
+      {
+        id: 'user-stu-liming',
+        username: 'stu-liming',
+        passwordHash: hashPassword('student123', 'seed-stu-liming'),
+        role: 'student'
+      }
+    ]
+  });
+
+  await prisma.teacher.create({
+    data: {
+      id: 'teacher-wang',
+      userId: 'user-teacher-wang',
+      name: '王老师',
+      phone: '13800000000',
+      email: 'wang@example.com'
+    }
+  });
 
   for (const [index, category] of knowledgeBaseCategories.filter((item) => item.id !== 'all').entries()) {
     await prisma.knowledgeCategory.create({
@@ -108,6 +151,7 @@ async function seed() {
   await prisma.course.create({
     data: {
       id: courseId,
+      teacherId: 'teacher-wang',
       title: '牛顿第二定律',
       subject: '物理',
       grade: '高一',
@@ -117,8 +161,8 @@ async function seed() {
 
   await prisma.class.createMany({
     data: [
-      { id: 'class-2026-physics-1', name: '高一 3 班', grade: '高一', subject: '物理' },
-      { id: 'class-2026-physics-2', name: '高一 4 班', grade: '高一', subject: '物理' }
+      { id: 'class-2026-physics-1', name: '高一 3 班', grade: '高一', subject: '物理', teacherId: 'teacher-wang' },
+      { id: 'class-2026-physics-2', name: '高一 4 班', grade: '高一', subject: '物理', teacherId: 'teacher-wang' }
     ]
   });
 
@@ -155,6 +199,7 @@ async function seed() {
     await prisma.student.create({
       data: {
         id: student.id,
+        userId: student.id === 'stu-chenyu' ? 'user-stu-chenyu' : student.id === 'stu-liming' ? 'user-stu-liming' : null,
         name: student.name,
         classId,
         studentNo: student.id.replace('stu-', '2026-'),
