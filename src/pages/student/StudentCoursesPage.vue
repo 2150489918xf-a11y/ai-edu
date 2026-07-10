@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { logout } from '../../data/authApiClient';
-import { getStudentDashboard } from '../../data/studentApiClient';
+import { getStudentCourseGroups } from '../../data/studentApiClient';
 
 const DEFAULT_STUDENT_ID = 'stu-chenyu';
 
@@ -46,7 +46,7 @@ async function loadDashboard() {
   loading.value = true;
   error.value = '';
   try {
-    const dashboard = await getStudentDashboard(studentId.value);
+    const dashboard = await getStudentCourseGroups(studentId.value);
     student.value = dashboard.student || null;
     courses.value = dashboard.courses || [];
   } catch (err) {

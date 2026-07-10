@@ -181,6 +181,33 @@ export function createLearningApiApp({
         return;
       }
 
+      if (studentAnalysisService && req.method === 'GET' && path === '/api/v1/student/analysis/course-groups') {
+        const data = await studentAnalysisService.getCourseGroupOverview(url.searchParams.get('studentId') || undefined);
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      const studentAnalysisGroupGenerateMatch = path.match(/^\/api\/v1\/student\/analysis\/course-groups\/([^/]+)\/generate$/);
+      if (studentAnalysisService && req.method === 'POST' && studentAnalysisGroupGenerateMatch) {
+        const body = await readJsonBody(req);
+        const data = await studentAnalysisService.generateCourseGroupProfile(
+          body.studentId || url.searchParams.get('studentId') || undefined,
+          decodeURIComponent(studentAnalysisGroupGenerateMatch[1])
+        );
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      const studentAnalysisGroupMatch = path.match(/^\/api\/v1\/student\/analysis\/course-groups\/([^/]+)$/);
+      if (studentAnalysisService && req.method === 'GET' && studentAnalysisGroupMatch) {
+        const data = await studentAnalysisService.getCourseGroupAnalysis(
+          url.searchParams.get('studentId') || undefined,
+          decodeURIComponent(studentAnalysisGroupMatch[1])
+        );
+        sendJson(res, 200, { data });
+        return;
+      }
+
       const studentAnalysisGenerateMatch = path.match(/^\/api\/v1\/student\/analysis\/courses\/([^/]+)\/generate$/);
       if (studentAnalysisService && req.method === 'POST' && studentAnalysisGenerateMatch) {
         const body = await readJsonBody(req);

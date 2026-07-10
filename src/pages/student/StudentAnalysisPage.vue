@@ -7,9 +7,9 @@ import { GridComponent, LegendComponent, RadarComponent, TooltipComponent } from
 import { CanvasRenderer } from 'echarts/renderers';
 import VChart from 'vue-echarts';
 import {
-  generateStudentCourseProfile,
-  getStudentAnalysis,
-  getStudentCourseAnalysis
+  generateStudentCourseGroupProfile,
+  getStudentCourseGroupAnalysis,
+  getStudentCourseGroupAnalysisOverview
 } from '../../data/studentApiClient';
 
 use([
@@ -340,7 +340,7 @@ async function loadOverview() {
   loading.value = true;
   error.value = '';
   try {
-    overview.value = await getStudentAnalysis(studentId.value);
+    overview.value = await getStudentCourseGroupAnalysisOverview(studentId.value);
     if (!selectedCourseId.value && courses.value.length) selectedCourseId.value = courses.value[0].course.id;
     if (selectedCourseId.value) await loadCourseDetail(selectedCourseId.value);
   } catch (err) {
@@ -356,7 +356,7 @@ async function loadCourseDetail(courseId) {
   detailLoading.value = true;
   detailError.value = '';
   try {
-    courseDetail.value = await getStudentCourseAnalysis(studentId.value, courseId);
+    courseDetail.value = await getStudentCourseGroupAnalysis(studentId.value, courseId);
   } catch (err) {
     detailError.value = err.message || '课程学情加载失败';
   } finally {
@@ -369,7 +369,7 @@ async function generateProfile() {
   generatingCourseId.value = selectedCourseId.value;
   detailError.value = '';
   try {
-    courseDetail.value = await generateStudentCourseProfile(studentId.value, selectedCourseId.value);
+    courseDetail.value = await generateStudentCourseGroupProfile(studentId.value, selectedCourseId.value);
     await loadOverview();
   } catch (err) {
     detailError.value = err.message || 'AI 学生画像生成失败';
@@ -380,11 +380,15 @@ async function generateProfile() {
 
 function openPracticeGenerate() {
   if (!selectedCourseId.value) return;
+  const unitItems = courseDetail.value?.units || selectedCourse.value?.units || [];
+  const targetUnit = unitItems.find((item) => Number(item.summary?.wrongCount || 0) > 0) || unitItems[0] || null;
+  const targetCourseId = targetUnit?.course?.id || selectedCourseId.value;
   router.push({
     path: '/student/analysis/practice-generate',
     query: {
       studentId: studentId.value,
-      courseId: selectedCourseId.value
+      courseId: targetCourseId,
+      courseTitle: targetUnit?.course?.title || courseDetail.value?.course?.title || selectedCourse.value?.course?.title || ''
     }
   });
 }

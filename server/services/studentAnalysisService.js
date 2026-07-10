@@ -419,6 +419,180 @@ export function createStudentAnalysisService(prisma, { env = process.env, fetchI
     };
   }
 
+  async function getVisibleCourseGroups(student) {
+    return prisma.courseGroup.findMany({
+      where: {
+        status: 'active',
+        deletedAt: null,
+        OR: [
+          {
+            studentEnrollments: {
+              some: { studentId: student.id, status: 'active' }
+            }
+          },
+          {
+            units: {
+              some: {
+                sessions: {
+                  some: {
+                    classId: student.classId,
+                    status: { not: 'student_enrollment' },
+                    OR: [
+                      { targetStudentId: null },
+                      { targetStudentId: student.id }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            units: {
+              some: {
+                studentEnrollments: {
+                  some: { studentId: student.id, status: 'active' }
+                }
+              }
+            }
+          }
+        ]
+      },
+      include: {
+        teacher: true,
+        units: {
+          where: { status: 'active', deletedAt: null },
+          include: { teacher: true },
+          orderBy: [{ sortOrder: 'asc' }, { updatedAt: 'desc' }]
+        }
+      },
+      orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }]
+    });
+  }
+
+  async function collectUnitAnalyses(student, group) {
+    const analyses = [];
+    for (const unit of normalizeArray(group.units)) {
+      try {
+        analyses.push(await buildCourseAnalysis(student.id, unit.id));
+      } catch (error) {
+        if (error.statusCode !== 404) throw error;
+      }
+    }
+    return analyses;
+  }
+
+  function aggregateCourseGroupAnalysis(student, group, unitAnalyses) {
+    const summarySeed = {
+      totalQuestions: 0,
+      answeredCount: 0,
+      correctCount: 0,
+      wrongCount: 0,
+      accuracy: 0,
+      completionRate: 0,
+      avgDurationSeconds: 0,
+      latestAnsweredAt: null,
+      unitCount: normalizeArray(group.units).length
+    };
+    const knowledgeMap = new Map();
+    const wrongQuestions = [];
+    let durationTotal = 0;
+    let durationCount = 0;
+
+    for (const item of unitAnalyses) {
+      summarySeed.totalQuestions += Number(item.summary.totalQuestions || 0);
+      summarySeed.answeredCount += Number(item.summary.answeredCount || 0);
+      summarySeed.correctCount += Number(item.summary.correctCount || 0);
+      summarySeed.wrongCount += Number(item.summary.wrongCount || 0);
+      if (item.summary.avgDurationSeconds && item.summary.answeredCount) {
+        durationTotal += Number(item.summary.avgDurationSeconds) * Number(item.summary.answeredCount);
+        durationCount += Number(item.summary.answeredCount);
+      }
+      if (item.summary.latestAnsweredAt && (!summarySeed.latestAnsweredAt || new Date(item.summary.latestAnsweredAt) > new Date(summarySeed.latestAnsweredAt))) {
+        summarySeed.latestAnsweredAt = item.summary.latestAnsweredAt;
+      }
+
+      for (const stat of item.knowledgeStats) {
+        const current = knowledgeMap.get(stat.name) || {
+          name: stat.name,
+          total: 0,
+          answered: 0,
+          correct: 0,
+          wrong: 0,
+          accuracy: 0
+        };
+        current.total += Number(stat.total || 0);
+        current.answered += Number(stat.answered || 0);
+        current.correct += Number(stat.correct || 0);
+        current.wrong += Number(stat.wrong || 0);
+        current.accuracy = getAccuracy(current.correct, current.answered);
+        knowledgeMap.set(stat.name, current);
+      }
+
+      wrongQuestions.push(...item.wrongQuestions.map((question) => ({
+        ...question,
+        courseId: item.course.id,
+        courseTitle: item.course.title
+      })));
+    }
+
+    summarySeed.accuracy = getAccuracy(summarySeed.correctCount, summarySeed.answeredCount);
+    summarySeed.completionRate = getAccuracy(summarySeed.answeredCount, summarySeed.totalQuestions);
+    summarySeed.avgDurationSeconds = durationCount ? Math.round(durationTotal / durationCount) : 0;
+
+    const knowledgeStats = [...knowledgeMap.values()]
+      .map((item) => ({ ...item, accuracy: getAccuracy(item.correct, item.answered) }))
+      .sort((a, b) => a.accuracy - b.accuracy || b.wrong - a.wrong);
+
+    return {
+      student: {
+        id: student.id,
+        name: student.name,
+        studentNo: student.studentNo || '',
+        className: student.class?.name || ''
+      },
+      course: {
+        id: group.id,
+        title: group.title,
+        subject: group.subject,
+        grade: group.grade,
+        teacher: group.teacher?.name || ''
+      },
+      summary: summarySeed,
+      knowledgeStats,
+      wrongQuestions: wrongQuestions.sort((a, b) => new Date(b.submittedAt || 0) - new Date(a.submittedAt || 0)),
+      units: unitAnalyses.map((item) => ({
+        course: item.course,
+        summary: item.summary,
+        weakPoints: item.knowledgeStats.filter((stat) => stat.answered > 0).slice(0, 3),
+        profile: item.profile
+      })),
+      profile: null
+    };
+  }
+
+  async function buildCourseGroupAnalysis(studentId, groupId) {
+    const student = await requireStudent(studentId);
+    const groups = await getVisibleCourseGroups(student);
+    const group = groups.find((item) => item.id === groupId);
+    if (!group) throw createHttpError(404, 'NOT_FOUND', '学生课程不存在');
+    const unitAnalyses = await collectUnitAnalyses(student, group);
+    return aggregateCourseGroupAnalysis(student, group, unitAnalyses);
+  }
+
+  function normalizeGeneratedGroupProfile(studentId, groupId, profilePayload) {
+    return {
+      id: `group-profile-${studentId}-${groupId}`,
+      studentId,
+      courseId: groupId,
+      mastery: profilePayload.mastery || [],
+      weakPoints: profilePayload.weakPoints || [],
+      mistakeReasons: profilePayload.mistakeReasons || [],
+      recommendedPractice: profilePayload.recommendedPractice || {},
+      aiConversationSummary: profilePayload.summary || '',
+      updatedAt: new Date().toISOString()
+    };
+  }
+
   return {
     async getOverview(studentId) {
       const student = await requireStudent(studentId);
@@ -487,6 +661,93 @@ export function createStudentAnalysisService(prisma, { env = process.env, fetchI
           weakPoints: item.knowledgeStats.filter((stat) => stat.answered > 0).slice(0, 3),
           profile: item.profile
         }))
+      };
+    },
+
+    async getCourseGroupOverview(studentId) {
+      const student = await requireStudent(studentId);
+      const groups = await getVisibleCourseGroups(student);
+      const groupAnalyses = [];
+      for (const group of groups) {
+        const unitAnalyses = await collectUnitAnalyses(student, group);
+        groupAnalyses.push(aggregateCourseGroupAnalysis(student, group, unitAnalyses));
+      }
+      const answeredCount = groupAnalyses.reduce((sum, item) => sum + item.summary.answeredCount, 0);
+      const correctCount = groupAnalyses.reduce((sum, item) => sum + item.summary.correctCount, 0);
+      const weakPoints = groupAnalyses
+        .flatMap((item) => item.knowledgeStats.filter((stat) => stat.answered > 0).map((stat) => ({
+          courseId: item.course.id,
+          courseTitle: item.course.title,
+          name: stat.name,
+          accuracy: stat.accuracy,
+          wrong: stat.wrong
+        })))
+        .sort((a, b) => a.accuracy - b.accuracy || b.wrong - a.wrong)
+        .slice(0, 5);
+
+      return {
+        student: {
+          id: student.id,
+          name: student.name,
+          studentNo: student.studentNo || '',
+          className: student.class?.name || '',
+          grade: student.class?.grade || '',
+          subject: student.class?.subject || ''
+        },
+        summary: {
+          courseCount: groupAnalyses.length,
+          answeredCount,
+          correctCount,
+          accuracy: getAccuracy(correctCount, answeredCount),
+          weakPoints
+        },
+        courses: groupAnalyses.map((item) => ({
+          course: item.course,
+          summary: item.summary,
+          weakPoints: item.knowledgeStats.filter((stat) => stat.answered > 0).slice(0, 3),
+          units: item.units,
+          profile: item.profile
+        }))
+      };
+    },
+
+    async getCourseGroupAnalysis(studentId, groupId) {
+      return buildCourseGroupAnalysis(studentId, groupId);
+    },
+
+    async generateCourseGroupProfile(studentId, groupId) {
+      const analysis = await buildCourseGroupAnalysis(studentId, groupId);
+      const localProfile = buildLocalProfile(analysis);
+      const localChartConfig = localProfile.recommendedPractice.chartConfig;
+      let aiMeta = { provider: 'local', model: 'statistics' };
+      let profilePayload = localProfile;
+
+      if (fetchImpl && env.DEEPSEEK_API_KEY) {
+        const aiResult = await requestDeepSeekAnalysis({ env, fetchImpl, payload: analysis });
+        aiMeta = { provider: aiResult.provider, model: aiResult.model };
+        profilePayload = {
+          ...localProfile,
+          ...aiResult.profile,
+          recommendedPractice: {
+            ...localProfile.recommendedPractice,
+            ...(aiResult.profile.recommendedPractice || {}),
+            chartConfig: normalizeChartConfig(aiResult.profile.recommendedPractice?.chartConfig, localChartConfig)
+          }
+        };
+      }
+
+      profilePayload = {
+        ...profilePayload,
+        recommendedPractice: {
+          ...(profilePayload.recommendedPractice || {}),
+          chartConfig: normalizeChartConfig(profilePayload.recommendedPractice?.chartConfig, localChartConfig),
+          aiMeta
+        }
+      };
+
+      return {
+        ...analysis,
+        profile: normalizeGeneratedGroupProfile(studentId, groupId, profilePayload)
       };
     },
 

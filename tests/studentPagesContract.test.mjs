@@ -17,7 +17,7 @@ assert.ok(!appSource.includes("to: '/student/courses'"), 'teacher navigation sho
 assert.ok(loginSource.includes('logout();') && loginSource.includes('fillDemoAccount();'), 'login page should clear stale sessions when switching identity modes');
 assert.ok(!routerSource.includes("role === 'teacher' && !isTeacherLogin"), 'router should allow switching from teacher login state to student login page');
 
-assert.ok(coursesSource.includes('getStudentDashboard'), 'student courses page should load student dashboard data');
+assert.ok(coursesSource.includes('getStudentCourseGroups'), 'student courses page should load real course group dashboard data');
 assert.ok(!coursesSource.includes('listStudentCourseCatalog'), 'student courses page should not load a joinable course catalog');
 assert.ok(!coursesSource.includes('joinStudentCourse'), 'student courses page should not allow students to self-join courses');
 assert.ok(coursesSource.includes('logout'), 'student courses page should clear auth session on logout');
@@ -29,8 +29,8 @@ assert.ok(!coursesSource.includes('课程中心') && !coursesSource.includes('�
 assert.ok(coursesSource.includes('学情分析') && coursesSource.includes("path: '/student/analysis'"), 'student courses page should show learning analysis entry card');
 assert.ok(coursesSource.includes('任课老师'), 'joined course cards should still show course-level teacher');
 assert.ok(!coursesSource.includes('<dt>任课老师</dt>\\n            <dd>{{ profileTeacher }}</dd>'), 'student profile should not show a single teacher');
-assert.ok(analysisSource.includes('getStudentAnalysis') && analysisSource.includes('getStudentCourseAnalysis'), 'student analysis page should load overview and course detail data');
-assert.ok(analysisSource.includes('generateStudentCourseProfile'), 'student analysis page should generate AI learning profile');
+assert.ok(analysisSource.includes('getStudentCourseGroupAnalysisOverview') && analysisSource.includes('getStudentCourseGroupAnalysis'), 'student analysis page should load course group overview and detail data');
+assert.ok(analysisSource.includes('generateStudentCourseGroupProfile'), 'student analysis page should generate AI course group learning profile');
 assert.ok(analysisSource.includes('AI 学生画像') && analysisSource.includes('错题记录'), 'student analysis page should display profile and wrong question sections');
 assert.ok(analysisSource.includes('position: sticky') && analysisSource.includes('course-list-panel'), 'student analysis course profile panel should stick while scrolling');
 assert.ok(analysisSource.includes('vue-echarts') && analysisSource.includes('radarOption') && analysisSource.includes('knowledgeBarOption') && analysisSource.includes('answerPieOption'), 'student analysis page should render open-source ECharts insight charts');
@@ -38,7 +38,8 @@ assert.ok(analysisSource.includes('chartConfig') && !analysisSource.includes('le
 assert.ok(analysisSource.includes('labelLine: { show: false }') && analysisSource.includes('legend: {') && analysisSource.includes('show: false'), 'answer composition chart should not render clipped outer labels');
 assert.ok(analysisSource.includes('compact-metrics') && analysisSource.includes('knowledge-diagnosis'), 'student analysis page should use compact KPI metrics and in-card knowledge diagnosis');
 assert.ok(!analysisSource.includes('metric-grid') && !analysisSource.includes('knowledge-panel'), 'student analysis page should not render sparse legacy metric or knowledge panels');
-assert.ok(courseDetailSource.includes('getStudentCourse'), 'student course detail page should load course tasks');
+assert.ok(courseDetailSource.includes('getStudentCourseGroup'), 'student course detail page should load course group tasks');
+assert.ok(courseDetailSource.includes('unit-list') && courseDetailSource.includes('unit-grid'), 'student course detail page should display course units');
 assert.ok(practiceSource.includes('getStudentTask'), 'practice page should load task questions');
 assert.ok(practiceSource.includes('streamStudentAiChat'), 'practice page should stream AI tutor replies');
 assert.ok(practiceSource.includes('上一题') && practiceSource.includes('下一题'), 'practice page should support previous and next question navigation');

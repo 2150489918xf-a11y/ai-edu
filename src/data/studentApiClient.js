@@ -57,8 +57,31 @@ export async function getStudentDashboard(studentId) {
   return requestJson(`/student/dashboard${buildQuery({ studentId })}`);
 }
 
+export async function getStudentCourseGroups(studentId) {
+  return requestJson(`/student/course-groups${buildQuery({ studentId })}`);
+}
+
+export async function getStudentCourseGroup(studentId, groupId) {
+  return requestJson(`/student/course-groups/${encodeURIComponent(groupId)}${buildQuery({ studentId })}`);
+}
+
 export async function getStudentAnalysis(studentId) {
   return requestJson(`/student/analysis${buildQuery({ studentId })}`);
+}
+
+export async function getStudentCourseGroupAnalysisOverview(studentId) {
+  return requestJson(`/student/analysis/course-groups${buildQuery({ studentId })}`);
+}
+
+export async function getStudentCourseGroupAnalysis(studentId, groupId) {
+  return requestJson(`/student/analysis/course-groups/${encodeURIComponent(groupId)}${buildQuery({ studentId })}`);
+}
+
+export async function generateStudentCourseGroupProfile(studentId, groupId) {
+  return requestJson(`/student/analysis/course-groups/${encodeURIComponent(groupId)}/generate`, {
+    method: 'POST',
+    body: JSON.stringify({ studentId })
+  });
 }
 
 export async function getStudentCourseAnalysis(studentId, courseId) {

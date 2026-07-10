@@ -64,6 +64,52 @@ function createMockStudentAnalysisService() {
           recommendedPractice: { difficulty: '基础到中等', questionTypes: ['choice', 'blank'], knowledge: ['受力分析'] }
         }
       };
+    },
+    async getCourseGroupOverview(studentId) {
+      assert.equal(studentId, 'stu-1');
+      return {
+        student: { id: 'stu-1', name: '陈宇', className: '高一 3 班' },
+        summary: { courseCount: 1, answeredCount: 8, correctCount: 5, accuracy: 63, weakPoints: [] },
+        courses: [
+          {
+            course: { id: 'group-physics-grade1', title: '高一物理', subject: '物理', grade: '高一' },
+            summary: { totalQuestions: 12, answeredCount: 8, correctCount: 5, accuracy: 63, unitCount: 3 },
+            weakPoints: [{ name: '受力分析', accuracy: 45 }],
+            units: [{ course: { id: 'course-newton-2', title: '牛顿第二定律' } }],
+            profile: null
+          }
+        ]
+      };
+    },
+    async getCourseGroupAnalysis(studentId, groupId) {
+      assert.equal(studentId, 'stu-1');
+      assert.equal(groupId, 'group-physics-grade1');
+      return {
+        student: { id: 'stu-1', name: '陈宇' },
+        course: { id: groupId, title: '高一物理' },
+        summary: { totalQuestions: 12, answeredCount: 8, correctCount: 5, accuracy: 63, unitCount: 3 },
+        knowledgeStats: [{ name: '受力分析', answered: 4, correct: 2, wrong: 2, accuracy: 50 }],
+        wrongQuestions: [],
+        units: [{ course: { id: 'course-newton-2', title: '牛顿第二定律' } }],
+        profile: null
+      };
+    },
+    async generateCourseGroupProfile(studentId, groupId) {
+      assert.equal(studentId, 'stu-1');
+      assert.equal(groupId, 'group-physics-grade1');
+      return {
+        student: { id: 'stu-1', name: '陈宇' },
+        course: { id: groupId, title: '高一物理' },
+        summary: { totalQuestions: 12, answeredCount: 8, correctCount: 5, accuracy: 63, unitCount: 3 },
+        knowledgeStats: [],
+        wrongQuestions: [],
+        units: [],
+        profile: {
+          aiConversationSummary: '高一物理整体受力分析需要继续巩固。',
+          weakPoints: [{ knowledge: '受力分析', reason: '跨单元错题集中' }],
+          recommendedPractice: { difficulty: '基础到中等', questionTypes: ['choice', 'blank'], knowledge: ['受力分析'] }
+        }
+      };
     }
   };
 }
@@ -111,6 +157,21 @@ try {
   });
   assert.equal(generated.response.status, 200);
   assert.equal(generated.payload.data.profile.recommendedPractice.difficulty, '基础到中等');
+
+  const groupOverview = await requestJson(baseUrl, '/api/v1/student/analysis/course-groups?studentId=stu-1');
+  assert.equal(groupOverview.response.status, 200);
+  assert.equal(groupOverview.payload.data.courses[0].course.id, 'group-physics-grade1');
+
+  const groupDetail = await requestJson(baseUrl, '/api/v1/student/analysis/course-groups/group-physics-grade1?studentId=stu-1');
+  assert.equal(groupDetail.response.status, 200);
+  assert.equal(groupDetail.payload.data.summary.unitCount, 3);
+
+  const groupGenerated = await requestJson(baseUrl, '/api/v1/student/analysis/course-groups/group-physics-grade1/generate', {
+    method: 'POST',
+    body: JSON.stringify({ studentId: 'stu-1' })
+  });
+  assert.equal(groupGenerated.response.status, 200);
+  assert.equal(groupGenerated.payload.data.profile.recommendedPractice.difficulty, '基础到中等');
 
   console.log('student analysis API contracts passed');
 } finally {

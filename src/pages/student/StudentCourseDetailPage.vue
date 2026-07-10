@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { getStudentCourse } from '../../data/studentApiClient';
+import { getStudentCourseGroup } from '../../data/studentApiClient';
 
 const DEFAULT_STUDENT_ID = 'stu-chenyu';
 
@@ -14,6 +14,7 @@ const course = ref(null);
 const studentId = computed(() => route.query.studentId || DEFAULT_STUDENT_ID);
 const courseId = computed(() => route.params.courseId);
 const tasks = computed(() => course.value?.tasks || []);
+const units = computed(() => course.value?.units || []);
 const completedTasks = computed(() => tasks.value.filter((task) => task.status === 'completed').length);
 
 function statusLabel(status) {
@@ -33,7 +34,7 @@ async function loadCourse() {
   loading.value = true;
   error.value = '';
   try {
-    course.value = await getStudentCourse(studentId.value, courseId.value);
+    course.value = await getStudentCourseGroup(studentId.value, courseId.value);
   } catch (err) {
     error.value = err.message || '课程详情加载失败';
   } finally {
@@ -72,13 +73,29 @@ onMounted(loadCourse);
           <p>{{ course?.goal || course?.description || '完成老师发布的练习，巩固本节课知识。' }}</p>
         </article>
         <article>
+          <strong>{{ units.length }}</strong>
+          <span>课程单元</span>
+        </article>
+        <article>
           <strong>{{ tasks.length }}</strong>
           <span>全部任务</span>
         </article>
-        <article>
-          <strong>{{ completedTasks }}</strong>
-          <span>已完成</span>
-        </article>
+      </section>
+
+      <section class="unit-list">
+        <header>
+          <h2>课程单元</h2>
+          <span>{{ units.length }} 个单元 · {{ completedTasks }} 个任务已完成</span>
+        </header>
+        <div class="unit-grid">
+          <article v-for="unit in units" :key="unit.id" class="unit-card">
+            <div>
+              <strong>{{ unit.title }}</strong>
+              <span>{{ unit.taskCount || 0 }} 个任务 · {{ unit.questionCount || 0 }} 道题</span>
+            </div>
+            <em>{{ unit.progress || 0 }}%</em>
+          </article>
+        </div>
       </section>
 
       <section class="task-list">
@@ -122,6 +139,7 @@ onMounted(loadCourse);
 
 .detail-topbar,
 .course-overview,
+.unit-list,
 .task-list {
   width: min(1120px, 100%);
   margin: 0 auto;
@@ -173,6 +191,8 @@ onMounted(loadCourse);
 }
 
 .course-overview article,
+.unit-list,
+.unit-card,
 .task-list,
 .task-card,
 .detail-empty {
@@ -206,6 +226,66 @@ onMounted(loadCourse);
   display: block;
   font-family: var(--font-mono);
   font-size: 30px;
+}
+
+.unit-list {
+  display: grid;
+  gap: 12px;
+  border-radius: 16px;
+  margin-bottom: 16px;
+  padding: 14px;
+}
+
+.unit-list header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.unit-list h2 {
+  font-size: 18px;
+}
+
+.unit-list header span,
+.unit-card span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.unit-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.unit-card {
+  display: flex;
+  min-height: 78px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.unit-card strong,
+.unit-card span {
+  display: block;
+}
+
+.unit-card span {
+  margin-top: 6px;
+}
+
+.unit-card em {
+  border-radius: 999px;
+  background: var(--mint);
+  color: var(--green);
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-style: normal;
+  font-weight: 900;
 }
 
 .task-list {
@@ -286,6 +366,10 @@ onMounted(loadCourse);
 
   .course-overview {
     grid-template-columns: minmax(0, 1fr) 160px 160px;
+  }
+
+  .unit-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .task-card {
