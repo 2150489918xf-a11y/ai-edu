@@ -153,6 +153,22 @@ export function createLearningApiApp({
         return;
       }
 
+      if (studentLearningService && req.method === 'GET' && path === '/api/v1/student/course-groups') {
+        const data = await studentLearningService.listCourseGroups(url.searchParams.get('studentId') || undefined);
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      const studentCourseGroupMatch = path.match(/^\/api\/v1\/student\/course-groups\/([^/]+)$/);
+      if (studentLearningService && req.method === 'GET' && studentCourseGroupMatch) {
+        const data = await studentLearningService.getCourseGroup(
+          url.searchParams.get('studentId') || undefined,
+          decodeURIComponent(studentCourseGroupMatch[1])
+        );
+        sendJson(res, 200, { data });
+        return;
+      }
+
       if (studentLearningService && req.method === 'GET' && path === '/api/v1/student/dashboard') {
         const data = await studentLearningService.getDashboard(url.searchParams.get('studentId') || undefined);
         sendJson(res, 200, { data });

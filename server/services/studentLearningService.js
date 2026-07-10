@@ -162,6 +162,105 @@ function normalizeCatalogCourse(course, source) {
   };
 }
 
+function normalizeCourseGroup(group, source) {
+  return {
+    id: group.id,
+    title: group.title,
+    subject: group.subject,
+    grade: group.grade,
+    teacher: group.teacher?.name || '任课老师',
+    description: group.description || '',
+    source,
+    unitCount: 0,
+    taskCount: 0,
+    pendingTaskCount: 0,
+    answeredQuestionCount: 0,
+    questionCount: 0,
+    progress: 0
+  };
+}
+
+function createCourseGroupBucket(group, source) {
+  return {
+    summary: normalizeCourseGroup(group, source),
+    group,
+    units: new Map(),
+    tasks: new Map()
+  };
+}
+
+function ensureCourseGroupBucket(groups, group, source) {
+  if (!group) return null;
+  const existing = groups.get(group.id);
+  if (existing) {
+    if (existing.summary.source !== 'joined' && source === 'joined') existing.summary.source = source;
+    return existing;
+  }
+  const bucket = createCourseGroupBucket(group, source);
+  groups.set(group.id, bucket);
+  return bucket;
+}
+
+function addUnitToGroupBucket(bucket, unit) {
+  if (!bucket || !unit) return;
+  const questionCount = normalizeArray(unit.questions).filter((question) => question.status === 'active').length;
+  const existing = bucket.units.get(unit.id);
+  if (existing) {
+    existing.title = unit.title;
+    existing.subject = unit.subject;
+    existing.grade = unit.grade;
+    existing.description = unit.description || existing.description || '';
+    existing.questionCount = Math.max(existing.questionCount, questionCount);
+    existing.progress = existing.questionCount ? Math.round((existing.answeredQuestionCount / existing.questionCount) * 100) : 0;
+    return;
+  }
+  bucket.units.set(unit.id, {
+    id: unit.id,
+    title: unit.title,
+    subject: unit.subject,
+    grade: unit.grade,
+    description: unit.description || '',
+    questionCount,
+    taskCount: 0,
+    answeredQuestionCount: 0,
+    progress: 0
+  });
+}
+
+function addSessionToGroupBucket(bucket, session, studentId) {
+  if (!bucket || !session?.course || bucket.tasks.has(session.id)) return;
+  const task = buildTask(session, studentId);
+  bucket.tasks.set(session.id, task);
+  addUnitToGroupBucket(bucket, session.course);
+  const unit = bucket.units.get(session.course.id);
+  if (unit) {
+    unit.taskCount += 1;
+    unit.answeredQuestionCount += task.answeredCount;
+    unit.questionCount = Math.max(unit.questionCount, task.questionCount);
+    unit.progress = unit.questionCount ? Math.round((unit.answeredQuestionCount / unit.questionCount) * 100) : 0;
+  }
+}
+
+function finalizeCourseGroupBucket(bucket) {
+  const tasks = [...bucket.tasks.values()];
+  const answeredQuestionCount = tasks.reduce((sum, task) => sum + task.answeredCount, 0);
+  const questionCount = tasks.reduce((sum, task) => sum + task.questionCount, 0);
+  const units = [...bucket.units.values()].sort((a, b) => a.title.localeCompare(b.title, 'zh-Hans-CN'));
+  return {
+    summary: {
+      ...bucket.summary,
+      unitCount: units.length,
+      taskCount: tasks.length,
+      pendingTaskCount: tasks.filter((task) => task.status !== 'completed').length,
+      answeredQuestionCount,
+      questionCount,
+      progress: questionCount ? Math.round((answeredQuestionCount / questionCount) * 100) : 0
+    },
+    units,
+    tasks: tasks.sort((a, b) => String(b.startedAt || '').localeCompare(String(a.startedAt || '')))
+  };
+}
+
 async function requireStudent(prisma, studentId) {
   if (!studentId) throw createHttpError(400, 'BAD_REQUEST', '缺少学生 ID');
   const student = await prisma.student.findFirst({
@@ -176,6 +275,128 @@ async function requireStudent(prisma, studentId) {
   return student;
 }
 
+async function buildCourseGroupBuckets(prisma, student, studentId) {
+  const [classSessions, unitEnrollments, groupEnrollments] = await Promise.all([
+    prisma.classroomSession.findMany({
+      where: {
+        classId: student.classId,
+        status: { not: STUDENT_ENROLLMENT_SESSION_STATUS },
+        OR: [
+          { targetStudentId: null },
+          { targetStudentId: student.id }
+        ],
+        course: { status: 'active', deletedAt: null, groupId: { not: null } }
+      },
+      include: {
+        course: {
+          include: {
+            teacher: true,
+            group: {
+              include: {
+                teacher: true,
+                units: {
+                  where: { status: 'active', deletedAt: null },
+                  include: { questions: { where: { status: 'active' }, select: { id: true, status: true } } }
+                }
+              }
+            },
+            questions: {
+              where: { status: 'active' },
+              orderBy: { createdAt: 'asc' }
+            }
+          }
+        },
+        answers: {
+          where: { studentId },
+          orderBy: { submittedAt: 'desc' }
+        },
+        sessionQuestions: {
+          include: { question: true },
+          orderBy: { sortOrder: 'asc' }
+        }
+      },
+      orderBy: [{ startedAt: 'desc' }, { id: 'asc' }]
+    }),
+    prisma.studentCourseEnrollment.findMany({
+      where: { studentId, status: 'active', course: { groupId: { not: null } } },
+      include: {
+        session: {
+          include: {
+            course: {
+              include: {
+                teacher: true,
+                group: {
+                  include: {
+                    teacher: true,
+                    units: {
+                      where: { status: 'active', deletedAt: null },
+                      include: { questions: { where: { status: 'active' }, select: { id: true, status: true } } }
+                    }
+                  }
+                },
+                questions: {
+                  where: { status: 'active' },
+                  orderBy: { createdAt: 'asc' }
+                }
+              }
+            },
+            answers: {
+              where: { studentId },
+              orderBy: { submittedAt: 'desc' }
+            },
+            sessionQuestions: {
+              include: { question: true },
+              orderBy: { sortOrder: 'asc' }
+            }
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    }),
+    prisma.studentCourseGroupEnrollment.findMany({
+      where: { studentId, status: 'active', group: { status: 'active', deletedAt: null } },
+      include: {
+        group: {
+          include: {
+            teacher: true,
+            units: {
+              where: { status: 'active', deletedAt: null },
+              include: { questions: { where: { status: 'active' }, select: { id: true, status: true } } },
+              orderBy: [{ sortOrder: 'asc' }, { updatedAt: 'desc' }]
+            }
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    })
+  ]);
+
+  const buckets = new Map();
+  const addGroupUnits = (bucket, group) => {
+    for (const unit of normalizeArray(group?.units)) addUnitToGroupBucket(bucket, unit);
+  };
+
+  for (const enrollment of groupEnrollments) {
+    const bucket = ensureCourseGroupBucket(buckets, enrollment.group, 'joined');
+    addGroupUnits(bucket, enrollment.group);
+  }
+
+  for (const session of classSessions) {
+    const bucket = ensureCourseGroupBucket(buckets, session.course?.group, 'class');
+    addGroupUnits(bucket, session.course?.group);
+    addSessionToGroupBucket(bucket, session, studentId);
+  }
+
+  for (const enrollment of unitEnrollments) {
+    if (!enrollment.session?.course || enrollment.session.course.status !== 'active') continue;
+    const bucket = ensureCourseGroupBucket(buckets, enrollment.session.course.group, 'joined');
+    addGroupUnits(bucket, enrollment.session.course.group);
+    addSessionToGroupBucket(bucket, enrollment.session, studentId);
+  }
+
+  return buckets;
+}
+
 export function createStudentLearningService(prisma) {
   return {
     async getDashboard(studentId) {
@@ -184,6 +405,32 @@ export function createStudentLearningService(prisma) {
       return {
         student: normalizeStudentProfile(student),
         courses
+      };
+    },
+
+    async listCourseGroups(studentId) {
+      const student = await requireStudent(prisma, studentId);
+      const buckets = await buildCourseGroupBuckets(prisma, student, studentId);
+      const courses = [...buckets.values()]
+        .map((bucket) => finalizeCourseGroupBucket(bucket).summary)
+        .sort((a, b) => a.title.localeCompare(b.title, 'zh-Hans-CN'));
+      return {
+        student: normalizeStudentProfile(student),
+        courses
+      };
+    },
+
+    async getCourseGroup(studentId, groupId) {
+      const student = await requireStudent(prisma, studentId);
+      if (!groupId) throw createHttpError(400, 'BAD_REQUEST', 'missing course group id');
+      const buckets = await buildCourseGroupBuckets(prisma, student, studentId);
+      const bucket = buckets.get(groupId);
+      if (!bucket) throw createHttpError(404, 'NOT_FOUND', 'student course group does not exist');
+      const detail = finalizeCourseGroupBucket(bucket);
+      return {
+        ...detail.summary,
+        units: detail.units,
+        tasks: detail.tasks
       };
     },
 

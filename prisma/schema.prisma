@@ -22,93 +22,117 @@ model User {
 }
 
 model Teacher {
-  id        String    @id @default(uuid())
-  userId    String?   @unique @map("user_id")
-  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name      String
-  phone     String?
-  email     String?
-  avatarUrl String?   @map("avatar_url")
-  status    String    @default("active")
-  deletedAt DateTime? @map("deleted_at")
-  classes   Class[]
-  courses   Course[]
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  id           String        @id @default(uuid())
+  userId       String?       @unique @map("user_id")
+  user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  phone        String?
+  email        String?
+  avatarUrl    String?       @map("avatar_url")
+  status       String        @default("active")
+  deletedAt    DateTime?     @map("deleted_at")
+  classes      Class[]
+  courses      Course[]
+  courseGroups CourseGroup[]
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
 
   @@map("teachers")
 }
 
 model Class {
-  id        String    @id @default(uuid())
+  id        String             @id @default(uuid())
   name      String
   grade     String
   subject   String
-  teacherId String?   @map("teacher_id")
-  teacher   Teacher?  @relation(fields: [teacherId], references: [id], onDelete: SetNull)
-  status    String    @default("active")
-  deletedAt DateTime? @map("deleted_at")
+  teacherId String?            @map("teacher_id")
+  teacher   Teacher?           @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  status    String             @default("active")
+  deletedAt DateTime?          @map("deleted_at")
   students  Student[]
   sessions  ClassroomSession[]
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
 
   @@map("classes")
 }
 
 model Student {
-  id              String           @id @default(uuid())
-  userId          String?          @unique @map("user_id")
-  user            User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
-  name            String
-  classId         String           @map("class_id")
-  class           Class            @relation(fields: [classId], references: [id], onDelete: Cascade)
-  studentNo       String?          @map("student_no")
-  attendance      String?
-  practiceCount   Int              @default(0) @map("practice_count")
-  status          String           @default("active")
-  deletedAt       DateTime?        @map("deleted_at")
-  answers         StudentAnswer[]
-  courseEnrollments StudentCourseEnrollment[]
-  learningProfiles LearningProfile[]
-  parentSummaries ParentSummary[]
-  createdAt       DateTime         @default(now()) @map("created_at")
-  updatedAt       DateTime         @updatedAt @map("updated_at")
+  id                     String                         @id @default(uuid())
+  userId                 String?                        @unique @map("user_id")
+  user                   User?                          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name                   String
+  classId                String                         @map("class_id")
+  class                  Class                          @relation(fields: [classId], references: [id], onDelete: Cascade)
+  studentNo              String?                        @map("student_no")
+  attendance             String?
+  practiceCount          Int                            @default(0) @map("practice_count")
+  status                 String                         @default("active")
+  deletedAt              DateTime?                      @map("deleted_at")
+  answers                StudentAnswer[]
+  courseEnrollments      StudentCourseEnrollment[]
+  courseGroupEnrollments StudentCourseGroupEnrollment[]
+  learningProfiles       LearningProfile[]
+  parentSummaries        ParentSummary[]
+  createdAt              DateTime                       @default(now()) @map("created_at")
+  updatedAt              DateTime                       @updatedAt @map("updated_at")
 
   @@map("students")
 }
 
 model Course {
-  id              String             @id @default(uuid())
-  teacherId       String?            @map("teacher_id")
-  teacher         Teacher?           @relation(fields: [teacherId], references: [id], onDelete: SetNull)
-  title           String
-  subject         String
-  grade           String
-  description     String?
-  duration        String?
-  goal            String?
-  knowledge       Json?
-  hasOutline      Boolean            @default(false) @map("has_outline")
-  progress        Int                @default(18)
-  materialUploaded Boolean           @default(false) @map("material_uploaded")
-  materialName    String?            @map("material_name")
-  referencedMaterials Json            @default("[]") @map("referenced_materials")
-  outline         Json?
-  mindmap         Json?
-  lessonPlan      Json?               @map("lesson_plan")
-  status          String             @default("active")
-  deletedAt       DateTime?          @map("deleted_at")
-  knowledgePoints KnowledgePoint[]
-  questions       Question[]
-  sessions        ClassroomSession[]
-  studentEnrollments StudentCourseEnrollment[]
-  learningProfiles LearningProfile[]
-  parentSummaries ParentSummary[]
-  createdAt       DateTime           @default(now()) @map("created_at")
-  updatedAt       DateTime           @updatedAt @map("updated_at")
+  id                  String                    @id @default(uuid())
+  teacherId           String?                   @map("teacher_id")
+  teacher             Teacher?                  @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  groupId             String?                   @map("group_id")
+  group               CourseGroup?              @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  title               String
+  subject             String
+  grade               String
+  description         String?
+  duration            String?
+  goal                String?
+  knowledge           Json?
+  hasOutline          Boolean                   @default(false) @map("has_outline")
+  progress            Int                       @default(18)
+  materialUploaded    Boolean                   @default(false) @map("material_uploaded")
+  materialName        String?                   @map("material_name")
+  referencedMaterials Json                      @default("[]") @map("referenced_materials")
+  outline             Json?
+  mindmap             Json?
+  lessonPlan          Json?                     @map("lesson_plan")
+  unitType            String                    @default("lesson") @map("unit_type")
+  sortOrder           Int                       @default(0) @map("sort_order")
+  status              String                    @default("active")
+  deletedAt           DateTime?                 @map("deleted_at")
+  knowledgePoints     KnowledgePoint[]
+  questions           Question[]
+  sessions            ClassroomSession[]
+  studentEnrollments  StudentCourseEnrollment[]
+  learningProfiles    LearningProfile[]
+  parentSummaries     ParentSummary[]
+  createdAt           DateTime                  @default(now()) @map("created_at")
+  updatedAt           DateTime                  @updatedAt @map("updated_at")
 
   @@map("courses")
+}
+
+model CourseGroup {
+  id                 String                         @id @default(uuid())
+  teacherId          String?                        @map("teacher_id")
+  teacher            Teacher?                       @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  title              String
+  subject            String
+  grade              String
+  description        String?
+  status             String                         @default("active")
+  deletedAt          DateTime?                      @map("deleted_at")
+  units              Course[]
+  studentEnrollments StudentCourseGroupEnrollment[]
+  createdAt          DateTime                       @default(now()) @map("created_at")
+  updatedAt          DateTime                       @updatedAt @map("updated_at")
+
+  @@map("course_groups")
 }
 
 model QuestionBank {
@@ -129,44 +153,44 @@ model QuestionBank {
 }
 
 model KnowledgePoint {
-  id          String           @id @default(uuid())
-  courseId    String           @map("course_id")
-  course      Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  id          String                   @id @default(uuid())
+  courseId    String                   @map("course_id")
+  course      Course                   @relation(fields: [courseId], references: [id], onDelete: Cascade)
   name        String
   description String?
-  parentId    String?          @map("parent_id")
-  parent      KnowledgePoint?  @relation("KnowledgePointTree", fields: [parentId], references: [id])
-  children    KnowledgePoint[] @relation("KnowledgePointTree")
+  parentId    String?                  @map("parent_id")
+  parent      KnowledgePoint?          @relation("KnowledgePointTree", fields: [parentId], references: [id])
+  children    KnowledgePoint[]         @relation("KnowledgePointTree")
   questions   QuestionKnowledgePoint[]
 
   @@map("knowledge_points")
 }
 
 model Question {
-  id              String                    @id @default(uuid())
-  bankId          String?                   @map("bank_id")
-  bank            QuestionBank?             @relation(fields: [bankId], references: [id], onDelete: SetNull)
-  courseId        String?                   @map("course_id")
-  course          Course?                   @relation(fields: [courseId], references: [id], onDelete: SetNull)
-  type            String
-  stage           String?
-  difficulty      String
-  title           String
-  options         Json?
-  answer          Json
-  analysis        String?
-  knowledge       Json?
-  status          String                    @default("active")
-  deletedAt       DateTime?                 @map("deleted_at")
-  accuracy        Int?
-  avgTimeSeconds  Int?                      @map("avg_time_seconds")
-  weakPoint       String?                   @map("weak_point")
-  optionDistribution Json?                  @map("option_distribution")
-  knowledgePoints QuestionKnowledgePoint[]
-  sessionLinks    ClassroomSessionQuestion[]
-  answers         StudentAnswer[]
-  createdAt       DateTime                  @default(now()) @map("created_at")
-  updatedAt       DateTime                  @updatedAt @map("updated_at")
+  id                 String                     @id @default(uuid())
+  bankId             String?                    @map("bank_id")
+  bank               QuestionBank?              @relation(fields: [bankId], references: [id], onDelete: SetNull)
+  courseId           String?                    @map("course_id")
+  course             Course?                    @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  type               String
+  stage              String?
+  difficulty         String
+  title              String
+  options            Json?
+  answer             Json
+  analysis           String?
+  knowledge          Json?
+  status             String                     @default("active")
+  deletedAt          DateTime?                  @map("deleted_at")
+  accuracy           Int?
+  avgTimeSeconds     Int?                       @map("avg_time_seconds")
+  weakPoint          String?                    @map("weak_point")
+  optionDistribution Json?                      @map("option_distribution")
+  knowledgePoints    QuestionKnowledgePoint[]
+  sessionLinks       ClassroomSessionQuestion[]
+  answers            StudentAnswer[]
+  createdAt          DateTime                   @default(now()) @map("created_at")
+  updatedAt          DateTime                   @updatedAt @map("updated_at")
 
   @@map("questions")
 }
@@ -182,19 +206,19 @@ model QuestionKnowledgePoint {
 }
 
 model ClassroomSession {
-  id        String          @id @default(uuid())
-  classId   String          @map("class_id")
-  courseId  String          @map("course_id")
-  targetStudentId String?    @map("target_student_id")
-  class     Class           @relation(fields: [classId], references: [id], onDelete: Cascade)
-  course    Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  title     String
-  status    String
-  answers   StudentAnswer[]
-  sessionQuestions ClassroomSessionQuestion[]
+  id                 String                     @id @default(uuid())
+  classId            String                     @map("class_id")
+  courseId           String                     @map("course_id")
+  targetStudentId    String?                    @map("target_student_id")
+  class              Class                      @relation(fields: [classId], references: [id], onDelete: Cascade)
+  course             Course                     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title              String
+  status             String
+  answers            StudentAnswer[]
+  sessionQuestions   ClassroomSessionQuestion[]
   studentEnrollments StudentCourseEnrollment[]
-  startedAt DateTime?       @map("started_at")
-  endedAt   DateTime?       @map("ended_at")
+  startedAt          DateTime?                  @map("started_at")
+  endedAt            DateTime?                  @map("ended_at")
 
   @@map("classroom_sessions")
 }
@@ -224,6 +248,20 @@ model StudentCourseEnrollment {
 
   @@unique([studentId, courseId])
   @@map("student_course_enrollments")
+}
+
+model StudentCourseGroupEnrollment {
+  id        String      @id @default(uuid())
+  studentId String      @map("student_id")
+  groupId   String      @map("group_id")
+  student   Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  group     CourseGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  status    String      @default("active")
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  @@unique([studentId, groupId])
+  @@map("student_course_group_enrollments")
 }
 
 model StudentAnswer {

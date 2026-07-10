@@ -55,6 +55,29 @@ const courses = [
   { id: 'dev-course-classical', teacherId: 'dev-teacher-zhou', title: '文言文基础', subject: '语文', grade: '高一', description: '常见实词、虚词与翻译方法。' }
 ];
 
+const courseGroups = [
+  { id: 'group-physics-grade1', teacherId: 'teacher-wang', title: '高一物理', subject: '物理', grade: '高一', description: '高一物理基础课程' },
+  { id: 'group-math-grade1', teacherId: 'dev-teacher-li', title: '高一数学', subject: '数学', grade: '高一', description: '高一数学基础课程' },
+  { id: 'group-chemistry-grade1', teacherId: 'dev-teacher-zhang', title: '高一化学', subject: '化学', grade: '高一', description: '高一化学基础课程' },
+  { id: 'group-english-grade1', teacherId: 'dev-teacher-zhao', title: '高一英语', subject: '英语', grade: '高一', description: '高一英语基础课程' },
+  { id: 'group-chinese-grade1', teacherId: 'dev-teacher-zhou', title: '高一语文', subject: '语文', grade: '高一', description: '高一语文基础课程' }
+];
+
+const courseGroupByCourseId = {
+  'course-newton-2': 'group-physics-grade1',
+  'dev-course-motion': 'group-physics-grade1',
+  'dev-course-force-composition': 'group-physics-grade1',
+  'dev-course-function-basic': 'group-math-grade1',
+  'dev-course-quadratic': 'group-math-grade1',
+  'dev-course-triangle': 'group-math-grade1',
+  'dev-course-amount': 'group-chemistry-grade1',
+  'dev-course-redox': 'group-chemistry-grade1',
+  'dev-course-relative-clause': 'group-english-grade1',
+  'dev-course-reading': 'group-english-grade1',
+  'dev-course-modern-prose': 'group-chinese-grade1',
+  'dev-course-classical': 'group-chinese-grade1'
+};
+
 const classCourseMap = [
   ['dev-class-grade1-1', ['dev-course-motion', 'dev-course-function-basic', 'dev-course-reading']],
   ['dev-class-grade1-2', ['dev-course-quadratic', 'dev-course-amount', 'dev-course-modern-prose']],
@@ -87,8 +110,17 @@ function enrollmentId(studentId, courseId) {
   return `enroll-${studentId}-${courseId}`;
 }
 
+function groupEnrollmentId(studentId, groupId) {
+  return `group-enroll-${studentId}-${groupId}`;
+}
+
 function answerId(studentId, sessionIdValue, questionIdValue) {
   return `answer-${studentId}-${sessionIdValue}-${questionIdValue}`;
+}
+
+function getCourseGroupId(courseOrCourseId) {
+  const courseId = typeof courseOrCourseId === 'string' ? courseOrCourseId : courseOrCourseId?.id;
+  return courseGroupByCourseId[courseId] || null;
 }
 
 function getCourseKnowledgeTags(course, index) {
@@ -250,19 +282,39 @@ async function upsertClassesAndStudents() {
   }
 }
 
+async function upsertCourseGroups() {
+  for (const group of courseGroups) {
+    await prisma.courseGroup.upsert({
+      where: { id: group.id },
+      update: {
+        ...group,
+        status: 'active',
+        deletedAt: null
+      },
+      create: group
+    });
+  }
+}
+
 async function upsertCoursesAndQuestions() {
-  for (const course of courses) {
+  for (const [index, course] of courses.entries()) {
+    const courseUnitData = {
+      ...course,
+      groupId: getCourseGroupId(course),
+      unitType: 'lesson',
+      sortOrder: index + 1
+    };
     await prisma.course.upsert({
       where: { id: course.id },
       update: {
-        ...course,
+        ...courseUnitData,
         duration: '45 分钟',
         goal: `完成${course.title}核心知识点练习`,
         status: 'active',
         deletedAt: null
       },
       create: {
-        ...course,
+        ...courseUnitData,
         duration: '45 分钟',
         goal: `完成${course.title}核心知识点练习`
       }
@@ -372,6 +424,46 @@ async function upsertEnrollments() {
   }
 }
 
+async function upsertCourseGroupEnrollments() {
+  const derivedEnrollments = new Map();
+
+  for (const [classId, courseIds] of classCourseMap) {
+    const classStudents = students.filter((student) => student[4] === classId);
+    for (const courseId of courseIds) {
+      const groupId = getCourseGroupId(courseId);
+      if (!groupId) continue;
+      for (const [studentId] of classStudents) {
+        derivedEnrollments.set(`${studentId}:${groupId}`, { studentId, groupId });
+      }
+    }
+  }
+
+  for (const [studentId, courseId] of extraEnrollments) {
+    const groupId = getCourseGroupId(courseId);
+    if (!groupId) continue;
+    derivedEnrollments.set(`${studentId}:${groupId}`, { studentId, groupId });
+  }
+
+  for (const { studentId, groupId } of derivedEnrollments.values()) {
+    await prisma.studentCourseGroupEnrollment.upsert({
+      where: {
+        studentId_groupId: {
+          studentId,
+          groupId
+        }
+      },
+      update: {
+        status: 'active'
+      },
+      create: {
+        id: groupEnrollmentId(studentId, groupId),
+        studentId,
+        groupId
+      }
+    });
+  }
+}
+
 async function upsertAnswers() {
   const answerSeeds = [
     ['stu-chenyu', sessionId('class-2026-physics-1', 'course-newton-2'), 'course-newton-2', [true, true, false]],
@@ -414,15 +506,18 @@ async function upsertAnswers() {
 async function main() {
   await upsertUsersAndTeachers();
   await upsertClassesAndStudents();
+  await upsertCourseGroups();
   await upsertCoursesAndQuestions();
   await upsertClassSessions();
   await upsertEnrollments();
+  await upsertCourseGroupEnrollments();
   await upsertAnswers();
 
   console.log(JSON.stringify({
     teachers: teachers.length,
     classes: classes.length,
     students: students.length,
+    courseGroups: courseGroups.length,
     courses: courses.length,
     questions: courses.length * 4,
     extraEnrollments: extraEnrollments.length
