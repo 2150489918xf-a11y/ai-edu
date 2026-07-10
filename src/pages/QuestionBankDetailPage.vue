@@ -296,12 +296,33 @@ watch(() => route.params.bankId, loadBank);
   font-weight: 800;
 }
 
+.bank-detail-page {
+  --bank-detail-workspace-height: calc(100vh - 242px);
+}
+
 .bank-detail-page :deep(.module-tools) {
   margin-top: 18px;
 }
 
+.bank-detail-page .two-col {
+  height: var(--bank-detail-workspace-height);
+  min-height: 0;
+  align-items: stretch;
+}
+
+.bank-detail-page .list-panel {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
 .bank-detail-page :deep(.question-row) {
   background: rgba(255, 255, 255, .72);
+}
+
+.bank-detail-page .side-panel {
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .question-answer {

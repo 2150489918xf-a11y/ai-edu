@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import AiChat from '../components/AiChat.vue';
 import {
@@ -8,13 +8,19 @@ import {
   getCourseChat,
   getOutline,
   markDraftMaterialUploaded,
-  markOutlineGenerated,
   notify,
+  setCourseOutline,
   setCourseChatScriptStep,
   streamCourseChatMessage,
   updateDraftCourseFromChat
 } from '../data/mockStore';
 import { updateCourse } from '../data/courseApiClient';
+import {
+  extractOutlineJsonBlock,
+  normalizeOutlinePayload,
+  requestOutlineAgent,
+  stripOutlineJsonBlock
+} from '../data/outlineAgentClient';
 import { loadWorkspaceCourse } from '../data/workspaceCourseLoader';
 
 const route = useRoute();
@@ -73,6 +79,7 @@ const draftFields = computed(() => [
 ]);
 
 let courseLoadToken = 0;
+let outlineAgentTypingTimer = 0;
 
 async function refreshWorkspaceCourse(id) {
   const token = ++courseLoadToken;
@@ -94,8 +101,157 @@ async function persistWorkspaceCourseState(patch) {
   }
 }
 
+function toAgentRole(role) {
+  if (role === 'teacher' || role === 'user') return 'user';
+  if (role === 'ai' || role === 'assistant') return 'assistant';
+  return '';
+}
+
+function toOutlineAgentMessages(chatMessages = []) {
+  return chatMessages
+    .map((message) => {
+      const role = toAgentRole(message.role);
+      const content = stripOutlineJsonBlock(message.text || message.content || '');
+      return role && content ? { role, content } : null;
+    })
+    .filter(Boolean);
+}
+
+function streamOutlineAgentReply(messageId, content) {
+  window.clearInterval(outlineAgentTypingTimer);
+  const fullText = String(content || '');
+  const chat = getCourseChat(courseId.value);
+  const target = chat.messages.find((message) => message.id === messageId);
+  if (!target) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    target.text = '';
+    target.isStreaming = true;
+    if (!fullText) {
+      target.isStreaming = false;
+      resolve();
+      return;
+    }
+
+    let cursor = 0;
+    outlineAgentTypingTimer = window.setInterval(() => {
+      cursor = Math.min(fullText.length, cursor + 2);
+      target.text = fullText.slice(0, cursor);
+      target.isStreaming = cursor < fullText.length;
+      if (cursor >= fullText.length) {
+        window.clearInterval(outlineAgentTypingTimer);
+        outlineAgentTypingTimer = 0;
+        resolve();
+      }
+    }, 24);
+  });
+}
+
+async function sendOutlineAgentMessage(text) {
+  appendCourseChatMessage(courseId.value, { role: 'teacher', text });
+  const history = toOutlineAgentMessages(getCourseChat(courseId.value).messages);
+  aiLoading.value = true;
+
+  try {
+    const result = await requestOutlineAgent({
+      course: {
+        id: course.value.id,
+        title: course.value.title,
+        shortTitle: course.value.shortTitle,
+        grade: course.value.grade,
+        subject: course.value.subject,
+        duration: course.value.duration,
+        goal: course.value.goal
+      },
+      currentOutline: outline.value,
+      messages: history
+    });
+
+    const replyContent = String(result.content || '').trim();
+    const outlineJson = extractOutlineJsonBlock(replyContent);
+    const visibleReply = stripOutlineJsonBlock(replyContent) || (
+      outlineJson ? '已根据你的要求更新课程大纲，并同步到左侧大纲区域。' : '我已收到，会继续结合当前大纲处理。'
+    );
+
+    const messageId = Date.now() + 1;
+    appendCourseChatMessage(courseId.value, {
+      id: messageId,
+      role: 'ai',
+      text: '',
+      isStreaming: true
+    });
+    await streamOutlineAgentReply(messageId, visibleReply);
+
+    if (!outlineJson) return;
+
+    const nextOutline = normalizeOutlinePayload(JSON.parse(outlineJson));
+    setCourseOutline(course.value.id, nextOutline);
+    course.value.hasOutline = true;
+    course.value.outline = nextOutline;
+    course.value.progress = Math.max(course.value.progress || 0, 58);
+    persistWorkspaceCourseState({
+      hasOutline: true,
+      progress: course.value.progress,
+      outline: nextOutline
+    });
+    notify('AI 大纲已更新');
+  } catch (error) {
+    window.clearInterval(outlineAgentTypingTimer);
+    outlineAgentTypingTimer = 0;
+    appendCourseChatMessage(courseId.value, {
+      role: 'ai',
+      text: error instanceof Error ? error.message : 'AI 大纲修改失败，请检查 DeepSeek 配置后重试。'
+    });
+  } finally {
+    aiLoading.value = false;
+  }
+}
+
+function getTagText(tag) {
+  return typeof tag === 'string' ? tag : String(tag?.text || tag?.label || '');
+}
+
+function getTone(value) {
+  const tone = String(value || '').trim();
+  return ['focus', 'warning', 'success', 'muted'].includes(tone) ? tone : 'default';
+}
+
+function tagToneClass(tag) {
+  return `tone-${getTone(typeof tag === 'string' ? 'default' : tag?.tone)}`;
+}
+
+const hasExplicitActiveSection = computed(() => outline.value?.sections?.some((section) => section.active) || false);
+
+function isCurrentSection(section, index) {
+  return Boolean(section.active) || (!hasExplicitActiveSection.value && index === 1);
+}
+
+function getSectionStatus(section, index) {
+  return section.status || (isCurrentSection(section, index) ? 'optimized' : '');
+}
+
+function getCardLabel(card) {
+  return Array.isArray(card) ? card[0] : card?.label;
+}
+
+function getCardContent(card) {
+  return Array.isArray(card) ? card[1] : card?.content;
+}
+
+function cardToneClass(card, section, index) {
+  if (!Array.isArray(card) && card?.tone) return `tone-${getTone(card.tone)}`;
+  const label = getCardLabel(card);
+  if (label === '风险知识点') return 'tone-warning';
+  if (isCurrentSection(section, index) && label === '关键内容') return 'tone-focus';
+  return 'tone-default';
+}
+
 onMounted(() => {
   refreshWorkspaceCourse(route.params.courseId);
+});
+
+onBeforeUnmount(() => {
+  window.clearInterval(outlineAgentTypingTimer);
 });
 
 watch(
@@ -106,63 +262,26 @@ watch(
   }
 );
 
-function generateOutline() {
-  if (outlineLoading.value) return;
+async function generateOutline() {
+  if (outlineLoading.value || aiLoading.value) return;
   if (!canGenerateOutline.value) {
     notify('请先和 AI 确认课程基础信息');
     return;
   }
   outlineLoading.value = true;
-  window.setTimeout(() => {
-    markOutlineGenerated(course.value.id);
-    course.value.hasOutline = true;
-    course.value.progress = Math.max(course.value.progress || 0, 58);
-    persistWorkspaceCourseState({
-      hasOutline: true,
-      progress: course.value.progress,
-      outline: course.value.outline || outline.value
-    });
+  try {
+    await sendOutlineAgentMessage('请根据当前课程信息生成课程大纲。不要强制四段式，请根据课时、课型和教学目标生成 3-6 个教学环节。');
+  } finally {
     outlineLoading.value = false;
-    notify('AI 大纲已生成');
-  }, 10000);
+  }
 }
 
 function sendMessage(inputText = draft.value) {
   if (aiLoading.value) return;
   const text = inputText.trim();
   if (!text) return;
-  appendCourseChatMessage(courseId.value, { role: 'teacher', text });
-  aiLoading.value = true;
-  let reply = '';
-  const messageId = Date.now() + 1;
-  if (course.value.isDraft && !course.value.infoReady) {
-    if (scriptStep.value === 0) {
-      reply = newCourseScript[0].ai;
-      scriptStep.value = 1;
-    } else {
-      updateDraftCourseFromChat(course.value.id);
-      reply = newCourseScript[1].ai;
-      scriptStep.value = 2;
-    }
-  } else if (course.value.isDraft && !course.value.hasOutline) {
-    reply = '可以的，我会把这个要求纳入大纲生成。现在可以直接生成第一版大纲；上传资料只是可选增强。';
-  } else {
-    reply = '已收到，我会优先保持 4 段教学节奏，并把修改同步到当前大纲。';
-  }
-  window.setTimeout(() => {
-    aiLoading.value = false;
-    appendCourseChatMessage(courseId.value, { id: messageId, role: 'ai', text: '' });
-    let index = 0;
-    const timer = window.setInterval(() => {
-      index += 2;
-      const target = getCourseChat(courseId.value).messages.find((message) => message.id === messageId);
-      if (target) target.text = reply.slice(0, index);
-      if (index >= reply.length) {
-        window.clearInterval(timer);
-      }
-    }, 36);
-  }, 3000);
   draft.value = '';
+  sendOutlineAgentMessage(text);
 }
 
 function openMaterialPicker() {
@@ -278,7 +397,7 @@ function handleChatSuggestion(suggestion) {
           <section class="ws-empty-copy">
             <span class="ws-chip"><span class="material-symbols-outlined">auto_awesome</span>{{ isNewDraft ? '从 0 开始' : 'AI 起草' }}</span>
             <h2>{{ isNewDraft ? '先和 AI 聊出课程基本信息' : '和 AI 先聊清楚，再生成第一版大纲' }}</h2>
-            <p>{{ isNewDraft ? '新建课程不会预填内容。请先告诉 AI 主题、年级、学科和课时时长；有资料可以上传增强，没有资料也能先生成大纲。' : '这一步只做课堂结构，不直接跳 PPT。确认知识点、班级水平和教学节奏后，AI 会生成可编辑的四段式大纲。' }}</p>
+            <p>{{ isNewDraft ? '新建课程不会预填内容。请先告诉 AI 主题、年级、学科和课时时长；有资料可以上传增强，没有资料也能先生成大纲。' : '这一步只做课堂结构，不直接跳 PPT。确认知识点、班级水平和教学节奏后，AI 会按课时生成可编辑的大纲。' }}</p>
 
             <div v-if="isNewDraft" class="ws-draft-status">
               <article v-for="[label, value] in draftFields" :key="label" :class="{ done: value !== '待确认' && value !== '未上传' && !value.startsWith('待 AI') }">
@@ -315,16 +434,16 @@ function handleChatSuggestion(suggestion) {
             </div>
 
             <div class="ws-empty-actions">
-              <button v-if="canGenerateOutline" class="ws-generate" type="button" :disabled="outlineLoading" @click="generateOutline">
+              <button v-if="canGenerateOutline" class="ws-generate" type="button" :disabled="outlineLoading || aiLoading" @click="generateOutline">
                 <span class="material-symbols-outlined">auto_awesome</span>
-                {{ outlineLoading ? '正在生成大纲...' : 'AI 生成大纲 ・ 30 秒' }}
+                {{ outlineLoading || aiLoading ? '正在生成大纲...' : 'AI 生成大纲' }}
               </button>
             </div>
           </section>
 
           <aside class="ws-empty-preview">
             <span>{{ isNewDraft ? '新建课流程' : '将生成的课堂骨架' }}</span>
-            <h3>{{ isNewDraft ? '对话 · 上传 · 解析 · 生成' : '45 分钟四段式推进' }}</h3>
+            <h3>{{ isNewDraft ? '对话 · 上传 · 解析 · 生成' : '按课时自动组织环节' }}</h3>
             <ol v-if="isNewDraft">
               <li :class="{ active: scriptStep === 0 }"><strong>1. 说清主题</strong><em>高中物理《牛顿第二定律》</em></li>
               <li :class="{ active: scriptStep === 1 }"><strong>2. 补充目标</strong><em>高一、45 分钟、实验探究</em></li>
@@ -332,10 +451,10 @@ function handleChatSuggestion(suggestion) {
               <li :class="{ active: scriptStep >= 2 }"><strong>4. 生成大纲</strong><em>基础信息确认后即可生成</em></li>
             </ol>
             <ol v-else>
-              <li><strong>情境导入</strong><em>用生活现象提出为什么</em></li>
-              <li><strong>实验探究</strong><em>控制变量观察加速度变化</em></li>
-              <li><strong>公式建构</strong><em>从数据关系抽象出 F=ma</em></li>
-              <li><strong>课堂检测</strong><em>即时题定位错因</em></li>
+              <li><strong>环节数量由 AI 判断</strong><em>通常根据课时生成 3-6 个教学环节</em></li>
+              <li><strong>环节名称不固定</strong><em>可按探究课、复习课、讲评课等课型调整</em></li>
+              <li><strong>内容跟随目标变化</strong><em>每个环节包含教师动作、学生产出和风险点</em></li>
+              <li><strong>可继续对话修改</strong><em>生成后仍可让 AI 增删、合并或重排环节</em></li>
             </ol>
             <div>
               <b>{{ draftStage === 'chat' ? '先对话，不急着生成' : canGenerateOutline ? '已具备生成大纲条件' : '生成后才能进入 PPT' }}</b>
@@ -350,7 +469,13 @@ function handleChatSuggestion(suggestion) {
               <h2>{{ topic }}课程大纲</h2>
               <p>AI 已生成 {{ outline.version }} ・ {{ outline.sections.length }} 教学环节 ・ {{ outline.tags.length - 1 }} 个核心知识点</p>
               <div class="ws-tags compact">
-                <b v-for="(tag, index) in outline.tags" :key="tag" :class="{ quiet: index > 1 }">{{ tag }}</b>
+                <b
+                  v-for="(tag, index) in outline.tags"
+                  :key="getTagText(tag)"
+                  :class="[tagToneClass(tag), { quiet: index > 1 }]"
+                >
+                  {{ getTagText(tag) }}
+                </b>
               </div>
             </div>
             <div class="ws-outline-actions">
@@ -374,7 +499,7 @@ function handleChatSuggestion(suggestion) {
               v-for="(section, index) in outline.sections"
               :key="section.title"
               class="ws-outline-row"
-              :class="{ current: index === 1 }"
+              :class="{ current: isCurrentSection(section, index) }"
             >
               <div class="ws-index">
                 <strong>{{ String(index + 1).padStart(2, '0') }}</strong>
@@ -384,16 +509,16 @@ function handleChatSuggestion(suggestion) {
               <div class="ws-row-main">
                 <h3>
                   {{ section.title }}
-                  <span v-if="index === 1">AI 已优化</span>
+                  <span v-if="getSectionStatus(section, index) === 'optimized'">AI 已优化</span>
                 </h3>
                 <div class="ws-note-grid">
                   <article
                     v-for="card in section.cards"
-                    :key="card[0]"
-                    :class="{ focus: index === 1 && card[0] === '关键内容', warn: card[0] === '风险知识点' }"
+                    :key="getCardLabel(card)"
+                    :class="cardToneClass(card, section, index)"
                   >
-                    <strong>{{ card[0] }}</strong>
-                    <p>{{ card[1] }}</p>
+                    <strong>{{ getCardLabel(card) }}</strong>
+                    <p>{{ getCardContent(card) }}</p>
                   </article>
                 </div>
               </div>
@@ -774,6 +899,23 @@ function handleChatSuggestion(suggestion) {
   color: #1f8847;
 }
 
+.ws-tags b.tone-success,
+.ws-tags b.tone-focus {
+  background: var(--mint);
+  color: #1f8847;
+}
+
+.ws-tags b.tone-warning {
+  background: #ffe9c1;
+  color: #9a5a00;
+}
+
+.ws-tags b.tone-muted {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, .72);
+  color: var(--muted);
+}
+
 .ws-tags b.quiet,
 .ws-tags em {
   border: 1px solid var(--line);
@@ -1004,13 +1146,25 @@ function handleChatSuggestion(suggestion) {
   padding: 10px 12px;
 }
 
-.ws-note-grid article.focus {
+.ws-note-grid article.focus,
+.ws-note-grid article.tone-focus {
   border-color: var(--green);
   color: #0f5e32;
 }
 
-.ws-note-grid article.warn {
+.ws-note-grid article.warn,
+.ws-note-grid article.tone-warning {
   background: #ffe9c1;
+}
+
+.ws-note-grid article.tone-success {
+  border-color: rgba(37, 171, 95, .34);
+  background: rgba(222, 247, 232, .72);
+}
+
+.ws-note-grid article.tone-muted {
+  background: rgba(247, 249, 247, .74);
+  color: var(--muted);
 }
 
 .ws-note-grid strong {

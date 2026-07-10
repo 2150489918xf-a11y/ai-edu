@@ -1,44 +1,233 @@
 <script setup>
-import { computed, nextTick, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import AiChat from '../components/AiChat.vue';
-import { lessonCards, lessonSections, lessonSteps } from '../data/lessonPlanMock';
-import { appendCourseChatMessage, getCourse, getCourseChat, notify, streamCourseChatMessage } from '../data/mockStore';
+import {
+  createCourse,
+  getCourse as fetchCourseDetail
+} from '../data/courseApiClient';
+import { getLessonPlanAssistantText, streamLessonPlan } from '../data/lessonPlanAgentClient';
+import { appendCourseChatMessage, getCourse, getCourseChat, getOutline, notify } from '../data/mockStore';
 
 const route = useRoute();
 const router = useRouter();
 const courseId = computed(() => String(route.params.courseId));
-const course = computed(() => getCourse(route.params.courseId));
+const courseDetail = ref(null);
+const course = computed(() => courseDetail.value || getCourse(route.params.courseId));
 const courseChat = computed(() => getCourseChat(courseId.value));
 
 const draft = ref('');
-const lessonGenerated = ref(false);
 const generatingLesson = ref(false);
-const activeSectionId = ref(1);
+const generatedLessonPlan = ref(null);
+const activeSectionId = ref('');
 const mainScroller = ref(null);
 const messages = computed(() => courseChat.value.messages);
+const displayMessages = computed(() => messages.value.map((message) => {
+  if (!['ai', 'assistant'].includes(message.role) || !message.text) return message;
+  const cleaned = getLessonPlanAssistantText(message.text);
+  return {
+    ...message,
+    text: cleaned || (/["{](teacher|student|steps|objectives|meta)/.test(message.text) ? '结构化教案已同步到左侧页面。' : message.text)
+  };
+}));
+const lessonGenerated = computed(() => Boolean(generatedLessonPlan.value));
+const displayMeta = computed(() => ({
+  grade: generatedLessonPlan.value?.meta?.grade || course.value.grade || '未提供',
+  subject: generatedLessonPlan.value?.meta?.subject || course.value.subject || '未提供',
+  textbook: generatedLessonPlan.value?.meta?.textbook || '待 AI 生成',
+  duration: generatedLessonPlan.value?.meta?.duration || course.value.duration || '未提供'
+}));
+const lessonSections = computed(() => generatedLessonPlan.value?.steps || []);
+const lessonSteps = computed(() => lessonSections.value.map((step, index) => ({
+  id: step.id,
+  number: index + 1,
+  title: step.title,
+  desc: step.intent || 'AI 正在补全',
+  time: step.time || '—',
+  done: step.status !== 'generating'
+})));
+const lessonCards = computed(() => ({
+  objective: {
+    title: '教学目标',
+    subtitle: '核心素养 ・ AI 根据课程上下文生成',
+    items: generatedLessonPlan.value?.objectives?.length
+      ? generatedLessonPlan.value.objectives
+      : [{ title: '生成中', content: 'AI 正在对齐课程目标和大纲结构。' }]
+  },
+  focus: {
+    title: '教学重点',
+    chips: generatedLessonPlan.value?.focus?.length ? generatedLessonPlan.value.focus : ['AI 正在生成']
+  },
+  hard: {
+    title: '教学难点',
+    items: generatedLessonPlan.value?.difficulties?.length ? generatedLessonPlan.value.difficulties : ['AI 正在生成']
+  },
+  materials: generatedLessonPlan.value?.materials?.length
+    ? generatedLessonPlan.value.materials
+    : [{ label: '课程依据', value: 'AI 正在读取课程大纲、资料和知识点。' }]
+}));
+const lessonClosing = computed(() => generatedLessonPlan.value?.closing?.length
+  ? generatedLessonPlan.value.closing
+  : [
+    { title: '课件联动', content: '生成完成后可继续串联 PPT。' },
+    { title: '题目联动', content: '课堂检测题可进入题库生成。' },
+    { title: '课后联动', content: '课堂表现会进入课后分析。' }
+  ]);
 
-const completedSteps = computed(() => lessonSteps.filter((step) => step.done || step.active).length);
-const progress = computed(() => `${Math.round((completedSteps.value / lessonSteps.length) * 100)}%`);
+const completedSteps = computed(() => lessonSteps.value.filter((step) => step.done || step.active).length);
+const progress = computed(() => {
+  if (!lessonSteps.value.length) return '0%';
+  return `${Math.round((completedSteps.value / lessonSteps.value.length) * 100)}%`;
+});
 
-function generateLessonPlan() {
+function createEmptyLessonPlan() {
+  return {
+    version: 'streaming',
+    meta: {
+      grade: course.value.grade || '',
+      subject: course.value.subject || '',
+      textbook: '',
+      duration: course.value.duration || ''
+    },
+    objectives: [],
+    materials: [],
+    focus: [],
+    difficulties: [],
+    steps: [],
+    closing: []
+  };
+}
+
+function hasRenderableLessonPlan(lessonPlan) {
+  return Array.isArray(lessonPlan?.steps) && lessonPlan.steps.length > 0;
+}
+
+function applyLessonPlanEvent(type, payload) {
+  if (!generatedLessonPlan.value) generatedLessonPlan.value = createEmptyLessonPlan();
+  if (type === 'meta') {
+    generatedLessonPlan.value.meta = { ...generatedLessonPlan.value.meta, ...payload };
+  }
+  if (type === 'objectives') generatedLessonPlan.value.objectives = payload;
+  if (type === 'materials') generatedLessonPlan.value.materials = payload;
+  if (type === 'focus') {
+    generatedLessonPlan.value.focus = payload.focus || [];
+    generatedLessonPlan.value.difficulties = payload.difficulties || [];
+  }
+  if (type === 'section' && payload?.id) {
+    const index = generatedLessonPlan.value.steps.findIndex((step) => step.id === payload.id);
+    if (index >= 0) generatedLessonPlan.value.steps.splice(index, 1, payload);
+    else generatedLessonPlan.value.steps.push(payload);
+    if (!activeSectionId.value) activeSectionId.value = payload.id;
+  }
+  if (type === 'closing') generatedLessonPlan.value.closing = payload;
+  if (type === 'lessonPlan') {
+    generatedLessonPlan.value = payload;
+    activeSectionId.value = payload.steps?.[0]?.id || activeSectionId.value;
+  }
+}
+
+async function ensureCoursePersisted() {
+  try {
+    const detail = await fetchCourseDetail(courseId.value);
+    courseDetail.value = detail;
+    return detail;
+  } catch {
+    const current = course.value || {};
+    const created = await createCourse({
+      id: courseId.value,
+      title: current.title || current.shortTitle || courseId.value,
+      subject: current.subject || '未提供',
+      grade: current.grade || '未提供',
+      description: current.summary || current.description || null,
+      duration: current.duration || null,
+      goal: current.goal || null,
+      knowledge: Array.isArray(current.knowledge) ? current.knowledge : [],
+      hasOutline: Boolean(current.hasOutline),
+      progress: Number.isFinite(Number(current.progress)) ? Number(current.progress) : 18,
+      materialUploaded: Boolean(current.materialUploaded),
+      materialName: current.materialName || null,
+      referencedMaterials: Array.isArray(current.referencedMaterials) ? current.referencedMaterials : [],
+      outline: current.outline || getOutline(courseId.value),
+      mindmap: current.mindmap || null,
+      lessonPlan: hasRenderableLessonPlan(generatedLessonPlan.value) ? generatedLessonPlan.value : null
+    });
+    courseDetail.value = created;
+    return created;
+  }
+}
+
+async function loadPersistedLessonPlan() {
+  try {
+    const detail = await fetchCourseDetail(courseId.value);
+    courseDetail.value = detail;
+    if (hasRenderableLessonPlan(detail.lessonPlan)) {
+      generatedLessonPlan.value = detail.lessonPlan;
+      activeSectionId.value = detail.lessonPlan.steps?.[0]?.id || '';
+    } else {
+      generatedLessonPlan.value = null;
+      activeSectionId.value = '';
+    }
+  } catch {
+    if (hasRenderableLessonPlan(course.value?.lessonPlan)) {
+      generatedLessonPlan.value = course.value.lessonPlan;
+      activeSectionId.value = course.value.lessonPlan.steps?.[0]?.id || '';
+    }
+  }
+}
+
+async function generateLessonPlan(prompt = '生成第一版完整教案') {
   if (generatingLesson.value) return;
   generatingLesson.value = true;
-  window.setTimeout(() => {
-    lessonGenerated.value = true;
-    generatingLesson.value = false;
-    streamCourseChatMessage(courseId.value, {
-      id: Date.now(),
-      role: 'ai',
-      time: '12:10',
-      text: '教案已生成。我已沿用课程目标、大纲结构和资料解析结果，生成教学目标、重点难点、教师活动和学生活动。'
-    }, { delay: 3000 });
-    notify('AI 教案已生成');
-    nextTick(() => {
-      mainScroller.value?.scrollTo({ top: 0, behavior: 'smooth' });
-      activeSectionId.value = 1;
+  if (!generatedLessonPlan.value) generatedLessonPlan.value = createEmptyLessonPlan();
+  const assistantMessage = {
+    id: Date.now(),
+    role: 'ai',
+    title: 'AI 正在生成教案',
+    text: ''
+  };
+  appendCourseChatMessage(courseId.value, assistantMessage);
+  let rawReply = '';
+  try {
+    await ensureCoursePersisted();
+    await streamLessonPlan(courseId.value, {
+      prompt,
+      currentLessonPlan: generatedLessonPlan.value,
+      messages: messages.value.map((message) => ({
+        role: message.role,
+        text: message.text
+      }))
+    }, {
+      onDelta: (delta) => {
+        rawReply += delta;
+        assistantMessage.text = getLessonPlanAssistantText(rawReply) || '正在生成结构化教案，左侧会逐块更新。';
+      },
+      onMeta: (meta) => applyLessonPlanEvent('meta', meta),
+      onObjectives: (objectives) => applyLessonPlanEvent('objectives', objectives),
+      onMaterials: (materials) => applyLessonPlanEvent('materials', materials),
+      onFocus: (payload) => applyLessonPlanEvent('focus', payload),
+      onSection: (section) => applyLessonPlanEvent('section', section),
+      onClosing: (closing) => applyLessonPlanEvent('closing', closing),
+      onLessonPlan: (lessonPlan) => applyLessonPlanEvent('lessonPlan', lessonPlan),
+      onDone: (meta) => {
+        assistantMessage.title = [meta.provider, meta.model].filter(Boolean).join(' · ') || 'AI 教案已生成';
+        assistantMessage.text = getLessonPlanAssistantText(rawReply) || '教案已生成，并已保存到课程。';
+        if (meta.course) {
+          courseDetail.value = meta.course;
+          if (meta.course.lessonPlan) applyLessonPlanEvent('lessonPlan', meta.course.lessonPlan);
+        }
+      }
     });
-  }, 10000);
+    notify('AI 教案已生成');
+    await nextTick();
+    mainScroller.value?.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (error) {
+    assistantMessage.title = '生成失败';
+    assistantMessage.text = error.message || 'AI 教案生成失败，请检查 DeepSeek 配置。';
+    notify(error.message || 'AI 教案生成失败');
+    if (!generatedLessonPlan.value?.steps?.length) generatedLessonPlan.value = null;
+  } finally {
+    generatingLesson.value = false;
+  }
 }
 
 function scrollToSection(id) {
@@ -51,8 +240,8 @@ function scrollToSection(id) {
 function syncActiveSection() {
   if (!lessonGenerated.value || !mainScroller.value) return;
   const scrollerTop = mainScroller.value.getBoundingClientRect().top;
-  let current = lessonSections[0]?.id ?? 1;
-  lessonSections.forEach((section) => {
+  let current = lessonSections.value[0]?.id ?? '';
+  lessonSections.value.forEach((section) => {
     const node = document.getElementById(`lesson-section-${section.id}`);
     if (!node) return;
     const offset = node.getBoundingClientRect().top - scrollerTop;
@@ -61,22 +250,33 @@ function syncActiveSection() {
   activeSectionId.value = current;
 }
 
+function shouldStartLessonPlanGeneration(text) {
+  if (lessonGenerated.value) return true;
+  return /生成|教案|设计|重写|修改|优化|补充|调整|改成|改为/.test(text);
+}
+
 function sendCoachMessage(text = draft.value) {
   const value = text.trim();
-  if (!value) return;
+  if (!value || generatingLesson.value) return;
   appendCourseChatMessage(courseId.value, { id: Date.now(), role: 'teacher', text: value });
-  streamCourseChatMessage(courseId.value, {
-    id: Date.now() + 1,
-    role: 'ai',
-    time: '12:11',
-    text: '我会沿用这门课已经确认的目标、大纲和资料上下文，基于当前教案环节改写，并优先保持重点、活动结构和课堂节奏不变。'
-  }, { delay: 3000 });
   draft.value = '';
+  if (!shouldStartLessonPlanGeneration(value)) {
+    appendCourseChatMessage(courseId.value, {
+      id: Date.now() + 1,
+      role: 'ai',
+      title: 'AI 教学助手',
+      text: '教案还没有生成。请先点击左侧“AI 生成教案”，或直接告诉我“生成这节课的教案”。'
+    });
+    return;
+  }
+  generateLessonPlan(value);
 }
 
 function goBack() {
   router.push(`/preclass/courses/${course.value.id}/workspace`);
 }
+
+onMounted(loadPersistedLessonPlan);
 </script>
 
 <template>
@@ -89,7 +289,7 @@ function goBack() {
       <span class="lp-save"><i></i>已自动保存</span>
       <div class="lp-title">
         <h1>{{ course.shortTitle }}</h1>
-        <p>{{ lessonGenerated ? '教案 ・ 高一物理 ・ 第 3 课时 / 共 12 课时 ・ 45 分钟' : '教案尚未生成，将沿用课程大纲和资料上下文。' }}</p>
+        <p>{{ lessonGenerated ? `教案 ・ ${displayMeta.grade}${displayMeta.subject} ・ ${displayMeta.duration}` : '教案尚未生成，将沿用课程大纲和资料上下文。' }}</p>
       </div>
     </header>
 
@@ -133,13 +333,13 @@ function goBack() {
             v-for="step in lessonSteps"
             :key="step.id"
             class="lp-step"
-            :class="{ active: activeSectionId === step.id, done: step.done || activeSectionId > step.id }"
+            :class="{ active: activeSectionId === step.id, done: step.done }"
             type="button"
             @click="scrollToSection(step.id)"
           >
             <span class="lp-step-index">
               <span v-if="step.done" class="material-symbols-outlined">check</span>
-              <b v-else>{{ step.id }}</b>
+              <b v-else>{{ step.number }}</b>
             </span>
             <span class="lp-step-copy">
               <strong>{{ step.title }}</strong>
@@ -154,10 +354,10 @@ function goBack() {
         <article v-if="!lessonGenerated" class="lp-empty">
           <span class="small-chip">AI 教案生成</span>
           <h2>基于课程上下文生成第一版教案</h2>
-          <p>系统会沿用前面已经确认的课程目标、上传资料和四段式大纲，生成教学目标、重点难点、教师活动、学生活动和后续环节。</p>
+          <p>系统会沿用前面已经确认的课程目标、上传资料和课程大纲，流式生成教学目标、重点难点、教师活动、学生活动和后续环节。</p>
           <div class="lp-empty-grid">
-            <section><strong>课程目标</strong><span>F=ma ・ 实验探究 ・ 基础应用</span></section>
-            <section><strong>大纲结构</strong><span>导入 / 探究 / 建构 / 检测</span></section>
+            <section><strong>课程目标</strong><span>{{ course.goal || '沿用课程已确认目标' }}</span></section>
+            <section><strong>大纲结构</strong><span>根据当前大纲自动判断环节数量</span></section>
             <section><strong>资料依据</strong><span>教材实验要求、课标表述、易错点</span></section>
           </div>
           <button class="lp-primary" type="button" :disabled="generatingLesson" @click="generateLessonPlan">
@@ -168,13 +368,13 @@ function goBack() {
 
         <template v-else>
         <div class="lp-filter-row">
-          <span>学段 <strong>高一</strong></span>
-          <span>学科 <strong>物理</strong></span>
-          <span>教材 <strong>人教版 2019 ・ 必修 1</strong></span>
-          <span>课时 <strong>45 分钟</strong></span>
+          <span>学段 <strong>{{ displayMeta.grade }}</strong></span>
+          <span>学科 <strong>{{ displayMeta.subject }}</strong></span>
+          <span>教材 <strong>{{ displayMeta.textbook }}</strong></span>
+          <span>课时 <strong>{{ displayMeta.duration }}</strong></span>
             <button type="button" @click="notify('课标对齐详情已展开')">
               <span class="material-symbols-outlined">auto_awesome</span>
-              AI 已对齐课标
+              {{ generatingLesson ? 'AI 正在生成' : 'AI 已对齐课标' }}
             </button>
         </div>
 
@@ -186,13 +386,9 @@ function goBack() {
             </div>
           </header>
           <div class="lp-objective-grid">
-            <section>
-              <strong>{{ lessonCards.objective.chips[0] }}</strong>
-              <p>{{ lessonCards.objective.text }}</p>
-            </section>
-            <section>
-              <strong>{{ lessonCards.objective.chips[1] }}</strong>
-              <p>通过购物车和小车实验，完成观察、实验、图像、归纳的探究路径。</p>
+            <section v-for="item in lessonCards.objective.items" :key="item.title">
+              <strong>{{ item.title }}</strong>
+              <p>{{ item.content }}</p>
             </section>
           </div>
         </article>
@@ -264,17 +460,9 @@ function goBack() {
             </div>
           </header>
           <div class="lp-next-grid">
-            <section>
-              <strong>课件联动</strong>
-              <p>四段大纲已经映射到 PPT 页面，可按教学环节逐页授课。</p>
-            </section>
-            <section>
-              <strong>题目联动</strong>
-              <p>课堂检测题可在授课时下发，并记录答题正确率。</p>
-            </section>
-            <section>
-              <strong>课后联动</strong>
-              <p>课堂表现、错因标签和作业订正会进入课后分析。</p>
+            <section v-for="item in lessonClosing" :key="item.title">
+              <strong>{{ item.title }}</strong>
+              <p>{{ item.content }}</p>
             </section>
           </div>
         </article>
@@ -284,7 +472,7 @@ function goBack() {
       <AiChat
         class="lp-coach"
         title="AI 教学助手"
-        :messages="messages"
+        :messages="displayMessages"
         :loading="generatingLesson"
         loading-label="生成中"
         placeholder="教案生成后可继续追问"

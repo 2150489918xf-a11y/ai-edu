@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import {
   archiveCourse,
   createCourse,
+  generateCourseMindMap,
   getCourse,
   listCourses,
   restoreCourse,
@@ -47,6 +48,7 @@ function listen() {
 
     if (req.method === 'POST' && url.pathname === '/api/v1/courses') {
       const body = await readJsonBody(req);
+      assert.equal(body.id, 'course-momentum');
       assert.equal(body.title, 'Momentum Conservation');
       assert.equal(body.duration, '45 minutes');
       assert.equal(body.goal, 'Understand when momentum is conserved.');
@@ -70,8 +72,39 @@ function listen() {
       assert.equal(body.materialUploaded, true);
       assert.equal(body.materialName, 'newton-source.pdf');
       assert.equal(body.outline.version, 'v1');
+      assert.equal(body.mindmap.markdown, '# Newton Second Law\n## Force');
+      assert.equal(body.referencedMaterials[0].id, 'mat-newton-textbook');
       sendJson(res, 200, {
         data: { id: 'course-newton-2', title: 'Newton Second Law', ...body }
+      });
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/v1/courses/course-newton-2/mindmap/generate') {
+      const body = await readJsonBody(req);
+      assert.equal(body.prompt, 'Generate a mind map from the saved course basics.');
+      assert.equal(body.currentMarkdown, '# Existing');
+      assert.equal(body.messages[0].role, 'user');
+      sendJson(res, 200, {
+        data: {
+          courseId: 'course-newton-2',
+          provider: 'deepseek',
+          model: 'deepseek-chat',
+          content: 'Mind map generated.',
+          mindmap: {
+            id: 'mindmap-course-newton-2',
+            title: 'Newton Second Law',
+            markdown: '# Newton Second Law\n## Force and Acceleration',
+            generatedAt: '2026-07-07T09:00:00.000Z'
+          },
+          course: {
+            id: 'course-newton-2',
+            mindmap: {
+              id: 'mindmap-course-newton-2',
+              markdown: '# Newton Second Law\n## Force and Acceleration'
+            }
+          }
+        }
       });
       return;
     }
@@ -106,6 +139,7 @@ try {
   assert.equal(courses.pagination.total, 1);
 
   const created = await createCourse({
+    id: 'course-momentum',
     title: 'Momentum Conservation',
     subject: 'Physics',
     grade: 'Grade 10',
@@ -125,11 +159,25 @@ try {
     progress: 58,
     materialUploaded: true,
     materialName: 'newton-source.pdf',
-    outline: { version: 'v1' }
+    outline: { version: 'v1' },
+    mindmap: { markdown: '# Newton Second Law\n## Force' },
+    referencedMaterials: [
+      { id: 'mat-newton-textbook', title: 'Newton textbook', type: 'textbook', evidence: 42 }
+    ]
   });
   assert.equal(updated.description, 'Updated description');
   assert.equal(updated.hasOutline, true);
   assert.equal(updated.progress, 58);
+  assert.equal(updated.mindmap.markdown, '# Newton Second Law\n## Force');
+  assert.equal(updated.referencedMaterials[0].id, 'mat-newton-textbook');
+
+  const mindmapResult = await generateCourseMindMap('course-newton-2', {
+    prompt: 'Generate a mind map from the saved course basics.',
+    currentMarkdown: '# Existing',
+    messages: [{ role: 'user', content: 'Generate mind map' }]
+  });
+  assert.equal(mindmapResult.mindmap.markdown, '# Newton Second Law\n## Force and Acceleration');
+  assert.equal(mindmapResult.course.mindmap.id, 'mindmap-course-newton-2');
 
   const archived = await archiveCourse('course-newton-2');
   assert.equal(archived.status, 'archived');
@@ -144,6 +192,7 @@ try {
       'POST /api/v1/courses',
       'GET /api/v1/courses/course-newton-2',
       'PATCH /api/v1/courses/course-newton-2',
+      'POST /api/v1/courses/course-newton-2/mindmap/generate',
       'DELETE /api/v1/courses/course-newton-2',
       'POST /api/v1/courses/course-newton-2/restore'
     ]

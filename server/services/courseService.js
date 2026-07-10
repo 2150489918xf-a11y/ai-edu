@@ -20,7 +20,10 @@ function normalizeCourse(course) {
     progress: course.progress ?? 18,
     materialUploaded: Boolean(course.materialUploaded),
     materialName: course.materialName || null,
+    referencedMaterials: Array.isArray(course.referencedMaterials) ? course.referencedMaterials : [],
     outline: course.outline || null,
+    mindmap: course.mindmap || null,
+    lessonPlan: course.lessonPlan || null,
     status: course.status,
     deletedAt: course.deletedAt ? course.deletedAt.toISOString() : null,
     createdAt: course.createdAt?.toISOString?.() || course.createdAt,
@@ -89,6 +92,7 @@ export function createCourseService(prisma) {
 
       const course = await prisma.course.create({
         data: {
+          ...(normalizeText(payload.id) ? { id: normalizeText(payload.id) } : {}),
           title: normalizeText(payload.title),
           subject: normalizeText(payload.subject),
           grade: normalizeText(payload.grade),
@@ -100,7 +104,10 @@ export function createCourseService(prisma) {
           progress: Number.isFinite(Number(payload.progress)) ? Number(payload.progress) : 18,
           materialUploaded: Boolean(payload.materialUploaded),
           materialName: normalizeText(payload.materialName) || null,
-          outline: payload.outline || null
+          referencedMaterials: Array.isArray(payload.referencedMaterials) ? payload.referencedMaterials : [],
+          outline: payload.outline || null,
+          mindmap: payload.mindmap || null,
+          lessonPlan: payload.lessonPlan || null
         }
       });
 
@@ -130,7 +137,10 @@ export function createCourseService(prisma) {
       if ('progress' in payload) data.progress = Math.min(Math.max(Number(payload.progress) || 0, 0), 100);
       if ('materialUploaded' in payload) data.materialUploaded = Boolean(payload.materialUploaded);
       if ('materialName' in payload) data.materialName = normalizeText(payload.materialName) || null;
+      if ('referencedMaterials' in payload) data.referencedMaterials = Array.isArray(payload.referencedMaterials) ? payload.referencedMaterials : [];
       if ('outline' in payload) data.outline = payload.outline || null;
+      if ('mindmap' in payload) data.mindmap = payload.mindmap || null;
+      if ('lessonPlan' in payload) data.lessonPlan = payload.lessonPlan || null;
 
       if ('title' in data && !data.title) {
         throw createHttpError(400, 'BAD_REQUEST', '课程名称不能为空');

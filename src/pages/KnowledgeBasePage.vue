@@ -2,10 +2,16 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import {
+  addKnowledgeCategory,
+  addKnowledgeMaterial,
   bindMaterialsToCourse,
   buildEvidencePack,
+  editKnowledgeCategory,
+  editKnowledgeMaterial,
   getKnowledgeBaseMaterials,
   parseKnowledgeMaterial,
+  removeKnowledgeCategory,
+  removeKnowledgeMaterial,
   uploadKnowledgeMaterial
 } from '../data/mockApi';
 import { knowledgeEvidenceLabels } from '../data/teachingMockData';
@@ -21,6 +27,26 @@ const categories = ref([]);
 const allMaterials = ref([]);
 const materials = ref([]);
 const selectedMaterialId = ref('');
+const categoryDialogOpen = ref(false);
+const materialDialogOpen = ref(false);
+const editingCategory = ref(null);
+const editingMaterial = ref(null);
+const categoryForm = ref({ name: '', icon: 'folder_open' });
+const materialForm = ref({
+  categoryId: '',
+  title: '',
+  type: 'PDF',
+  subject: '数学',
+  grade: '高一',
+  size: '',
+  pages: 0,
+  parseStatus: 'parsed',
+  source: '手动添加',
+  tagsText: '',
+  knowledgeText: '',
+  evidenceCount: 0,
+  chunks: 0
+});
 
 const typeTabs = [
   { id: 'all', label: '全部' },
@@ -74,13 +100,165 @@ function selectType(typeId) {
   refreshMaterials();
 }
 
+function openCreateCategory() {
+  editingCategory.value = null;
+  categoryForm.value = { name: '', icon: 'folder_open' };
+  categoryDialogOpen.value = true;
+}
+
+function openEditCategory(category) {
+  editingCategory.value = category;
+  categoryForm.value = {
+    name: category.name,
+    icon: category.icon || 'folder_open'
+  };
+  categoryDialogOpen.value = true;
+}
+
+async function submitCategory() {
+  try {
+    if (editingCategory.value) {
+      await editKnowledgeCategory(editingCategory.value.id, categoryForm.value);
+      notify('分类已更新');
+    } else {
+      const category = await addKnowledgeCategory(categoryForm.value);
+      activeCategory.value = category.id;
+      notify('分类已添加');
+    }
+    categoryDialogOpen.value = false;
+    await refreshMaterials();
+  } catch (error) {
+    notify(error.message || '分类保存失败');
+  }
+}
+
+async function deleteCategory(category) {
+  if (!category || category.id === 'all') return;
+  try {
+    await removeKnowledgeCategory(category.id);
+    if (activeCategory.value === category.id) {
+      activeCategory.value = 'all';
+    }
+    notify('分类已删除');
+    await refreshMaterials();
+  } catch (error) {
+    notify(error.message || '分类删除失败');
+  }
+}
+
+function parseListText(value) {
+  return String(value || '')
+    .split(/[，,\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseKnowledgeText(value) {
+  return parseListText(value).map((name, index) => ({
+    id: `kp-manual-${index + 1}-${name.replace(/\s+/g, '-')}`,
+    name
+  }));
+}
+
+function openCreateMaterial() {
+  editingMaterial.value = null;
+  materialForm.value = {
+    categoryId: activeCategory.value === 'all' ? categories.value.find((item) => item.id !== 'all')?.id || '' : activeCategory.value,
+    title: '',
+    type: 'PDF',
+    subject: '数学',
+    grade: '高一',
+    size: '',
+    pages: 0,
+    parseStatus: 'parsed',
+    source: '手动添加',
+    tagsText: '',
+    knowledgeText: '',
+    evidenceCount: 0,
+    chunks: 0
+  };
+  materialDialogOpen.value = true;
+}
+
+function openEditMaterial(material) {
+  editingMaterial.value = material;
+  materialForm.value = {
+    categoryId: material.categoryId,
+    title: material.title,
+    type: material.type,
+    subject: material.subject,
+    grade: material.grade,
+    size: material.size,
+    pages: material.pages,
+    parseStatus: material.parseStatus || material.status || 'parsed',
+    source: material.source,
+    tagsText: (material.tags || []).join('，'),
+    knowledgeText: (material.knowledgePoints || []).map((item) => item.name || item).join('，'),
+    evidenceCount: material.evidenceCount,
+    chunks: material.chunks
+  };
+  materialDialogOpen.value = true;
+}
+
+function buildMaterialPayload() {
+  return {
+    categoryId: materialForm.value.categoryId,
+    title: materialForm.value.title,
+    type: materialForm.value.type,
+    subject: materialForm.value.subject,
+    grade: materialForm.value.grade,
+    size: materialForm.value.size,
+    pages: Number(materialForm.value.pages || 0),
+    parseStatus: materialForm.value.parseStatus,
+    source: materialForm.value.source,
+    tags: parseListText(materialForm.value.tagsText),
+    knowledgePoints: parseKnowledgeText(materialForm.value.knowledgeText),
+    evidenceCount: Number(materialForm.value.evidenceCount || 0),
+    chunks: Number(materialForm.value.chunks || 0),
+    vectorIndexed: materialForm.value.parseStatus === 'parsed',
+    bm25Indexed: materialForm.value.parseStatus === 'parsed',
+    evidenceTypes: ['material_chunk'],
+    availableActions: ['引用到课程', '生成思维导图', '用于 AI 生成课件']
+  };
+}
+
+async function submitMaterial() {
+  try {
+    let material;
+    if (editingMaterial.value) {
+      material = await editKnowledgeMaterial(editingMaterial.value.id, buildMaterialPayload());
+      notify('资料已更新');
+    } else {
+      material = await addKnowledgeMaterial(buildMaterialPayload());
+      notify('资料已添加');
+    }
+    materialDialogOpen.value = false;
+    await refreshMaterials();
+    selectedMaterialId.value = material?.id || selectedMaterialId.value;
+  } catch (error) {
+    notify(error.message || '资料保存失败');
+  }
+}
+
+async function deleteMaterial(material) {
+  if (!material) return;
+  try {
+    await removeKnowledgeMaterial(material.id);
+    notify('资料已删除');
+    await refreshMaterials();
+  } catch (error) {
+    notify(error.message || '资料删除失败');
+  }
+}
+
 async function simulateUpload() {
   if (uploading.value) return;
   uploading.value = true;
   const material = await uploadKnowledgeMaterial({
     name: '二次函数单元教学补充资料.pdf',
     type: 'PDF',
-    size: '1.9 MB'
+    size: '1.9 MB',
+    categoryId: activeCategory.value === 'all' ? 'math-g10' : activeCategory.value
   });
   notify('资料上传成功，开始解析');
   await refreshMaterials();
@@ -145,24 +323,32 @@ onMounted(refreshMaterials);
             <span class="small-chip">资料分类</span>
             <h2>分类目录</h2>
           </div>
-          <button class="circle-action" type="button" @click="notify('新增分类：高一数学')">
+          <button class="circle-action" type="button" @click="openCreateCategory">
             <span class="material-symbols-outlined">add</span>
           </button>
         </header>
 
         <nav class="kb-category-list" aria-label="知识库资料分类">
-          <button
+          <article
             v-for="category in categories"
             :key="category.id"
             class="kb-category"
             :class="{ active: activeCategory === category.id }"
-            type="button"
-            @click="selectCategory(category.id)"
           >
-            <span class="material-symbols-outlined">{{ category.icon }}</span>
-            <strong>{{ category.name }}</strong>
-            <em>{{ category.count }}</em>
-          </button>
+            <button class="kb-category-main" type="button" @click="selectCategory(category.id)">
+              <span class="material-symbols-outlined">{{ category.icon }}</span>
+              <strong>{{ category.name }}</strong>
+              <em>{{ category.count }}</em>
+            </button>
+            <div v-if="category.id !== 'all'" class="kb-inline-actions">
+              <button type="button" aria-label="编辑分类" @click="openEditCategory(category)">
+                <span class="material-symbols-outlined">edit</span>
+              </button>
+              <button type="button" aria-label="删除分类" @click="deleteCategory(category)">
+                <span class="material-symbols-outlined">delete</span>
+              </button>
+            </div>
+          </article>
         </nav>
 
         <section class="kb-capacity">
@@ -208,6 +394,10 @@ onMounted(refreshMaterials);
             <span class="material-symbols-outlined">refresh</span>
             刷新
           </button>
+          <button class="primary-btn" type="button" @click="openCreateMaterial">
+            <span class="material-symbols-outlined">add</span>
+            手动添加
+          </button>
         </div>
 
         <section class="kb-table" :class="{ loading }">
@@ -218,15 +408,13 @@ onMounted(refreshMaterials);
             <span>Evidence</span>
           </header>
 
-          <button
+          <article
             v-for="material in materials"
             :key="material.id"
             class="kb-row"
             :class="{ active: selectedMaterial?.id === material.id }"
-            type="button"
-            @click="selectedMaterialId = material.id"
           >
-            <div class="kb-file-main">
+            <button class="kb-row-main" type="button" @click="selectedMaterialId = material.id">
               <span class="kb-file-icon">{{ material.type }}</span>
               <div>
                 <strong>{{ material.title }}</strong>
@@ -235,11 +423,19 @@ onMounted(refreshMaterials);
                   <span v-for="tag in material.tags" :key="tag">{{ tag }}</span>
                 </div>
               </div>
-            </div>
+            </button>
             <span>{{ material.size }}</span>
             <span class="kb-parse-chip" :class="material.status">{{ material.parseLabel }}</span>
             <strong>{{ material.evidenceCount }}</strong>
-          </button>
+            <div class="kb-row-actions">
+              <button type="button" aria-label="编辑资料" @click="openEditMaterial(material)">
+                <span class="material-symbols-outlined">edit</span>
+              </button>
+              <button type="button" aria-label="删除资料" @click="deleteMaterial(material)">
+                <span class="material-symbols-outlined">delete</span>
+              </button>
+            </div>
+          </article>
 
           <div v-if="!materials.length" class="kb-empty">
             <span class="material-symbols-outlined">folder_off</span>
@@ -290,6 +486,12 @@ onMounted(refreshMaterials);
           </section>
 
           <div class="kb-detail-actions">
+            <button class="soft-btn" type="button" @click="openEditMaterial(selectedMaterial)">
+              编辑资料
+            </button>
+            <button class="soft-btn danger-inline" type="button" @click="deleteMaterial(selectedMaterial)">
+              删除资料
+            </button>
             <button class="primary-btn" type="button" :disabled="selectedMaterial.status !== 'parsed'" @click="bindSelectedToCourse">
               引用到课程
             </button>
@@ -303,6 +505,116 @@ onMounted(refreshMaterials);
         </template>
       </aside>
     </section>
+
+    <Teleport to="body">
+      <div v-if="categoryDialogOpen" class="kb-dialog-backdrop" @click.self="categoryDialogOpen = false">
+        <section class="kb-dialog" role="dialog" aria-modal="true" aria-label="分类目录表单">
+          <header>
+            <h2>{{ editingCategory ? '编辑分类目录' : '新增分类目录' }}</h2>
+            <button type="button" aria-label="关闭" @click="categoryDialogOpen = false">
+              <span class="material-symbols-outlined">close</span>
+            </button>
+          </header>
+          <label>
+            <span>分类名称</span>
+            <input v-model="categoryForm.name" class="text-input" type="text" placeholder="例如：高一数学" />
+          </label>
+          <label>
+            <span>图标</span>
+            <input v-model="categoryForm.icon" class="text-input" type="text" placeholder="例如：functions" />
+          </label>
+          <footer>
+            <button class="soft-btn" type="button" @click="categoryDialogOpen = false">取消</button>
+            <button class="primary-btn" type="button" @click="submitCategory">保存分类</button>
+          </footer>
+        </section>
+      </div>
+
+      <div v-if="materialDialogOpen" class="kb-dialog-backdrop" @click.self="materialDialogOpen = false">
+        <section class="kb-dialog kb-material-dialog" role="dialog" aria-modal="true" aria-label="资料信息表单">
+          <header>
+            <h2>{{ editingMaterial ? '编辑资料信息' : '手动添加资料' }}</h2>
+            <button type="button" aria-label="关闭" @click="materialDialogOpen = false">
+              <span class="material-symbols-outlined">close</span>
+            </button>
+          </header>
+
+          <div class="kb-form-grid">
+            <label>
+              <span>所属分类</span>
+              <select v-model="materialForm.categoryId" class="text-input">
+                <option v-for="category in categories.filter((item) => item.id !== 'all')" :key="category.id" :value="category.id">
+                  {{ category.name }}
+                </option>
+              </select>
+            </label>
+            <label>
+              <span>资料类型</span>
+              <select v-model="materialForm.type" class="text-input">
+                <option value="PDF">PDF</option>
+                <option value="PPT">PPT</option>
+                <option value="DOC">DOC</option>
+                <option value="报告">报告</option>
+              </select>
+            </label>
+            <label class="wide">
+              <span>资料名称</span>
+              <input v-model="materialForm.title" class="text-input" type="text" placeholder="例如：二次函数图像与性质教材节选" />
+            </label>
+            <label>
+              <span>学科</span>
+              <input v-model="materialForm.subject" class="text-input" type="text" />
+            </label>
+            <label>
+              <span>年级</span>
+              <input v-model="materialForm.grade" class="text-input" type="text" />
+            </label>
+            <label>
+              <span>大小</span>
+              <input v-model="materialForm.size" class="text-input" type="text" placeholder="2.8 MB" />
+            </label>
+            <label>
+              <span>页数</span>
+              <input v-model.number="materialForm.pages" class="text-input" type="number" min="0" />
+            </label>
+            <label>
+              <span>解析状态</span>
+              <select v-model="materialForm.parseStatus" class="text-input">
+                <option value="parsed">已解析</option>
+                <option value="parsing">解析中</option>
+                <option value="unparsed">未解析</option>
+                <option value="failed">解析失败</option>
+              </select>
+            </label>
+            <label>
+              <span>来源</span>
+              <input v-model="materialForm.source" class="text-input" type="text" />
+            </label>
+            <label>
+              <span>切片数量</span>
+              <input v-model.number="materialForm.chunks" class="text-input" type="number" min="0" />
+            </label>
+            <label>
+              <span>Evidence</span>
+              <input v-model.number="materialForm.evidenceCount" class="text-input" type="number" min="0" />
+            </label>
+            <label class="wide">
+              <span>标签</span>
+              <input v-model="materialForm.tagsText" class="text-input" type="text" placeholder="用逗号分隔，例如：二次函数，对称轴" />
+            </label>
+            <label class="wide">
+              <span>提取知识点</span>
+              <input v-model="materialForm.knowledgeText" class="text-input" type="text" placeholder="用逗号分隔，例如：二次函数一般式，对称轴" />
+            </label>
+          </div>
+
+          <footer>
+            <button class="soft-btn" type="button" @click="materialDialogOpen = false">取消</button>
+            <button class="primary-btn" type="button" @click="submitMaterial">保存资料</button>
+          </footer>
+        </section>
+      </div>
+    </Teleport>
   </main>
 </template>
 
@@ -369,7 +681,7 @@ onMounted(refreshMaterials);
 
 .kb-category {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   min-height: 48px;
@@ -377,17 +689,29 @@ onMounted(refreshMaterials);
   border-radius: 12px;
   background: rgba(255, 255, 255, .62);
   padding: 0 12px;
+}
+
+.kb-category-main {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
   text-align: left;
 }
 
-.kb-category strong {
+.kb-category-main strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
 }
 
-.kb-category em {
+.kb-category-main em {
   color: var(--muted);
   font-style: normal;
   font-size: 12px;
@@ -402,6 +726,30 @@ onMounted(refreshMaterials);
 
 .kb-category.active em {
   color: rgba(255, 255, 255, .72);
+}
+
+.kb-inline-actions,
+.kb-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.kb-inline-actions button,
+.kb-row-actions button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .68);
+  color: var(--muted);
+}
+
+.kb-inline-actions .material-symbols-outlined,
+.kb-row-actions .material-symbols-outlined {
+  font-size: 18px;
 }
 
 .kb-capacity {
@@ -471,6 +819,10 @@ onMounted(refreshMaterials);
   font-size: 12px;
 }
 
+.kb-status-row .primary-btn {
+  height: 38px;
+}
+
 .kb-table {
   min-height: 0;
   overflow: hidden;
@@ -485,7 +837,7 @@ onMounted(refreshMaterials);
 .kb-table-head,
 .kb-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 82px 88px 62px;
+  grid-template-columns: minmax(0, 1fr) 82px 88px 62px 72px;
   align-items: center;
   gap: 12px;
   min-width: 0;
@@ -502,13 +854,10 @@ onMounted(refreshMaterials);
 }
 
 .kb-row {
-  width: 100%;
   min-height: 88px;
-  border: 0;
   border-bottom: 1px solid var(--line);
   background: rgba(255, 255, 255, .56);
   color: var(--ink);
-  text-align: left;
 }
 
 .kb-row:last-child {
@@ -520,12 +869,17 @@ onMounted(refreshMaterials);
   box-shadow: inset 3px 0 0 var(--green);
 }
 
-.kb-file-main {
+.kb-row-main {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr);
   gap: 11px;
   align-items: center;
   min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
 }
 
 .kb-file-icon,
@@ -546,7 +900,7 @@ onMounted(refreshMaterials);
   height: 42px;
 }
 
-.kb-file-main strong {
+.kb-row-main strong {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -555,7 +909,7 @@ onMounted(refreshMaterials);
   font-size: 16px;
 }
 
-.kb-file-main p,
+.kb-row-main p,
 .kb-detail-head p {
   margin-top: 5px;
   color: var(--soft);
@@ -673,6 +1027,82 @@ onMounted(refreshMaterials);
 .kb-detail-actions .soft-btn {
   width: 100%;
   height: 34px;
+}
+
+.danger-inline {
+  color: var(--rose);
+}
+
+.kb-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: grid;
+  place-items: center;
+  background: rgba(11, 31, 22, .34);
+  backdrop-filter: blur(10px);
+}
+
+.kb-dialog {
+  display: grid;
+  gap: 14px;
+  width: min(460px, calc(100vw - 44px));
+  max-height: min(860px, calc(100vh - 44px));
+  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, .72);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: 0 28px 70px rgba(8, 34, 21, .20);
+  padding: 20px;
+}
+
+.kb-material-dialog {
+  width: min(760px, calc(100vw - 44px));
+}
+
+.kb-dialog header,
+.kb-dialog footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.kb-dialog header h2 {
+  font-family: var(--font-serif);
+  font-size: 24px;
+}
+
+.kb-dialog header button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(10, 53, 34, .08);
+}
+
+.kb-dialog label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.kb-dialog .text-input {
+  min-height: 40px;
+}
+
+.kb-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.kb-form-grid .wide {
+  grid-column: 1 / -1;
 }
 
 .primary-btn:disabled,

@@ -13,11 +13,38 @@ import {
   fetchStudentProfile,
   fetchStudentProfileList
 } from './learningApiClient.js';
+import {
+  archiveKnowledgeCategory,
+  archiveKnowledgeMaterial,
+  createKnowledgeCategory,
+  createKnowledgeMaterial,
+  listKnowledgeCategories,
+  listKnowledgeMaterials,
+  updateKnowledgeCategory,
+  updateKnowledgeMaterial
+} from './knowledgeApiClient.js';
 
-const materialState = knowledgeMaterials.map((item) => ({ ...item }));
+const categoryState = knowledgeBaseCategories.map((item) => ({ ...item }));
+const materialState = knowledgeMaterials.filter(isKnowledgeMaterialRecord).map((item) => ({ ...item }));
 
 function delay(ms = 700) {
   return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
+}
+
+function isKnowledgeMaterialRecord(value) {
+  return Boolean(
+    value &&
+    value.id &&
+    value.categoryId &&
+    value.title &&
+    value.type &&
+    value.subject &&
+    value.grade
+  );
+}
+
+function shouldUseFallback(error) {
+  return error?.message === 'Missing VITE_API_BASE_URL' || error instanceof TypeError;
 }
 
 function matchesSearch(material, keyword) {
@@ -34,6 +61,33 @@ function matchesSearch(material, keyword) {
 }
 
 export async function getKnowledgeBaseMaterials(filters = {}) {
+  try {
+    const categoryResult = await listKnowledgeCategories({ status: 'active', pageSize: 100 });
+    const materialResult = await listKnowledgeMaterials({
+      categoryId: filters.categoryId && filters.categoryId !== 'all' ? filters.categoryId : undefined,
+      type: filters.type && filters.type !== 'all' ? filters.type : undefined,
+      parseStatus: filters.status && filters.status !== 'all' ? filters.status : undefined,
+      keyword: filters.keyword || undefined,
+      status: 'active',
+      pageSize: 100
+    });
+    return {
+      categories: [
+        {
+          id: 'all',
+          name: '全部资料',
+          count: materialResult.pagination?.total || materialResult.data.length,
+          icon: 'folder_open'
+        },
+        ...categoryResult.data
+      ],
+      materials: materialResult.data
+    };
+  } catch (error) {
+    if (!shouldUseFallback(error)) throw error;
+    // Fall back to in-memory demo data when the local API server is not running.
+  }
+
   await delay(filters.fast ? 0 : 600);
   const materials = materialState.filter((item) => {
     if (filters.categoryId && filters.categoryId !== 'all' && item.categoryId !== filters.categoryId) return false;
@@ -42,12 +96,30 @@ export async function getKnowledgeBaseMaterials(filters = {}) {
     return matchesSearch(item, filters.keyword);
   });
   return {
-    categories: knowledgeBaseCategories,
+    categories: categoryState,
     materials
   };
 }
 
 export async function uploadKnowledgeMaterial(fileMeta = {}) {
+  try {
+    return await createKnowledgeMaterial({
+      categoryId: fileMeta.categoryId || 'math-g10',
+      title: fileMeta.name?.replace(/\.[^.]+$/, '') || '二次函数单元教学补充资料',
+      type: fileMeta.type || 'PDF',
+      subject: fileMeta.subject || '数学',
+      grade: fileMeta.grade || '高一',
+      size: fileMeta.size || '1.9 MB',
+      pages: fileMeta.pages || 12,
+      source: fileMeta.source || '老师上传',
+      parseStatus: 'parsing',
+      tags: ['待解析']
+    });
+  } catch (error) {
+    if (!shouldUseFallback(error)) throw error;
+    // Fall back to in-memory demo data when the local API server is not running.
+  }
+
   await delay(800);
   const material = {
     id: `mat-upload-${Date.now()}`,
@@ -79,6 +151,34 @@ export async function uploadKnowledgeMaterial(fileMeta = {}) {
 }
 
 export async function parseKnowledgeMaterial(materialId) {
+  try {
+    return await updateKnowledgeMaterial(materialId, {
+      parseStatus: 'parsed',
+      chunks: 28,
+      evidenceCount: 34,
+      vectorIndexed: true,
+      bm25Indexed: true,
+      tags: ['二次函数', '对称轴', '配方法'],
+      knowledgePoints: [
+        { id: 'kp-quadratic-basic', name: '二次函数一般式' },
+        { id: 'kp-axis', name: '对称轴' },
+        { id: 'kp-vertex', name: '顶点坐标' },
+        { id: 'kp-square', name: '配方法' }
+      ],
+      retrievalSummary: {
+        bm25: 0.77,
+        vector: 0.88,
+        knowledgeMatch: 0.92,
+        teachingWeight: 0.82
+      },
+      evidenceTypes: ['material_chunk', 'teacher_note'],
+      availableActions: ['生成思维导图', '生成课程大纲', '生成 PPT']
+    });
+  } catch (error) {
+    if (!shouldUseFallback(error)) throw error;
+    // Fall back to in-memory demo data when the local API server is not running.
+  }
+
   await delay(1200);
   const material = materialState.find((item) => item.id === materialId);
   if (!material) return null;
@@ -124,6 +224,120 @@ export async function bindMaterialsToCourse(payload = {}) {
     evidencePackReady: true,
     message: '资料已引用到课程，可用于生成思维导图和课件'
   };
+}
+
+export async function addKnowledgeCategory(payload = {}) {
+  try {
+    return await createKnowledgeCategory(payload);
+  } catch (error) {
+    if (!shouldUseFallback(error)) throw error;
+    await delay(300);
+    const category = {
+      id: `cat-${Date.now()}`,
+      name: payload.name || '新分类',
+      icon: payload.icon || 'folder_open',
+      count: 0,
+      status: 'active'
+    };
+    categoryState.push(category);
+    return category;
+  }
+}
+
+export async function editKnowledgeCategory(categoryId, payload = {}) {
+  try {
+    return await updateKnowledgeCategory(categoryId, payload);
+  } catch (error) {
+    if (!shouldUseFallback(error)) throw error;
+    await delay(300);
+    const category = categoryState.find((item) => item.id === categoryId);
+    if (!category) return null;
+    Object.assign(category, payload);
+    return category;
+  }
+}
+
+export async function removeKnowledgeCategory(categoryId) {
+  try {
+    return await archiveKnowledgeCategory(categoryId);
+  } catch (error) {
+    if (!shouldUseFallback(error)) throw error;
+    await delay(300);
+    const index = categoryState.findIndex((item) => item.id === categoryId);
+    if (index >= 0) {
+      const [category] = categoryState.splice(index, 1);
+      return { ...category, status: 'archived' };
+    }
+    return null;
+  }
+}
+
+export async function addKnowledgeMaterial(payload = {}) {
+  try {
+    return await createKnowledgeMaterial(payload);
+  } catch (error) {
+    if (!shouldUseFallback(error)) throw error;
+    await delay(300);
+    const material = {
+      id: `mat-${Date.now()}`,
+      title: payload.title || '新资料',
+      type: payload.type || 'PDF',
+      subject: payload.subject || '数学',
+      grade: payload.grade || '高一',
+      categoryId: payload.categoryId || 'math-g10',
+      size: payload.size || '1 MB',
+      pages: Number(payload.pages || 0),
+      uploadedAt: '刚刚',
+      status: payload.parseStatus || 'parsed',
+      parseLabel: payload.parseStatus === 'parsing' ? '解析中' : '已解析',
+      source: payload.source || '手动添加',
+      chunks: Number(payload.chunks || 0),
+      evidenceCount: Number(payload.evidenceCount || 0),
+      vectorIndexed: Boolean(payload.vectorIndexed),
+      bm25Indexed: Boolean(payload.bm25Indexed),
+      teacherPinned: Boolean(payload.teacherPinned),
+      tags: Array.isArray(payload.tags) ? payload.tags : [],
+      knowledgePoints: Array.isArray(payload.knowledgePoints) ? payload.knowledgePoints : [],
+      retrievalSummary: payload.retrievalSummary || null,
+      evidenceTypes: Array.isArray(payload.evidenceTypes) ? payload.evidenceTypes : [],
+      availableActions: Array.isArray(payload.availableActions) ? payload.availableActions : [],
+      usedByCourses: Array.isArray(payload.usedByCourses) ? payload.usedByCourses : []
+    };
+    materialState.unshift(material);
+    return material;
+  }
+}
+
+export async function editKnowledgeMaterial(materialId, payload = {}) {
+  try {
+    return await updateKnowledgeMaterial(materialId, payload);
+  } catch (error) {
+    if (!shouldUseFallback(error)) throw error;
+    await delay(300);
+    const material = materialState.find((item) => item.id === materialId);
+    if (!material) return null;
+    Object.assign(material, payload);
+    if (payload.parseStatus) {
+      material.status = payload.parseStatus;
+      material.parseLabel = payload.parseStatus === 'parsing' ? '解析中' : '已解析';
+    }
+    return material;
+  }
+}
+
+export async function removeKnowledgeMaterial(materialId) {
+  try {
+    return await archiveKnowledgeMaterial(materialId);
+  } catch (error) {
+    if (!shouldUseFallback(error)) throw error;
+    await delay(300);
+    const index = materialState.findIndex((item) => item.id === materialId);
+    if (index >= 0) {
+      const [material] = materialState.splice(index, 1);
+      return { ...material, status: 'archived' };
+    }
+    return null;
+  }
 }
 
 export async function buildEvidencePack(payload = {}) {

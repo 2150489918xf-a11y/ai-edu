@@ -1,14 +1,21 @@
-<script setup>
-import { computed, onUnmounted, ref } from 'vue';
+﻿<script setup>
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import MindMapRenderer from '../components/MindMapRenderer.vue';
-import { generateMindMap } from '../data/mockApi';
-import { getCourse, notify } from '../data/mockStore';
+import {
+  createCourse,
+  generateCourseMindMap,
+  getCourse as fetchCourseDetail,
+  updateCourse as persistCourse
+} from '../data/courseApiClient';
+import { listKnowledgeMaterials } from '../data/knowledgeApiClient';
+import { getCourse as getMockCourse, notify } from '../data/mockStore';
 
 const route = useRoute();
 const router = useRouter();
 const courseId = computed(() => String(route.params.courseId || 'math-quadratic'));
-const course = computed(() => getCourse(courseId.value));
+const courseDetail = ref(null);
+const course = computed(() => courseDetail.value || getMockCourse(courseId.value));
 
 const generating = ref(false);
 const generated = ref(false);
@@ -24,6 +31,11 @@ const renameBranchTitle = ref('');
 const agentDraft = ref('');
 const agentSending = ref(false);
 const agentError = ref('');
+const availableMaterials = ref([]);
+const selectedMaterialIds = ref([]);
+const materialSelectorOpen = ref(false);
+const materialLoading = ref(false);
+const materialError = ref('');
 const agentMessages = ref([
   {
     role: 'assistant',
@@ -35,19 +47,21 @@ let revealTimer = 0;
 let agentTypingTimer = 0;
 
 const fallbackSources = [
-  { id: 'src-1', title: '二次函数图像与性质教材节选', type: '教材资料', status: '已引用', evidence: 42 },
-  { id: 'src-2', title: '高一二次函数错题样本与错因分析', type: '学情报告', status: '已引用', evidence: 25 },
-  { id: 'src-3', title: '二次函数单元教学设计初稿', type: '教师资料', status: '待解析', evidence: 0 }
+  { id: 'src-1', title: '示例教材资料', type: '教材资料', status: '已引用', evidence: 42 }
 ];
 
 const generationSteps = [
   '读取知识库引用资料',
-  '抽取知识点与公式',
-  '识别知识点层级关系',
+  '抽取知识点与关系',
+  '识别知识点层级',
   '合并学生薄弱点',
   '生成可编辑思维导图'
 ];
-const sources = computed(() => mindMap.value?.sources || fallbackSources);
+const referencedMaterials = computed(() => {
+  const refs = courseDetail.value?.referencedMaterials || course.value?.referencedMaterials || [];
+  return Array.isArray(refs) ? refs : [];
+});
+const sources = computed(() => referencedMaterials.value);
 const nodes = computed(() => mindMap.value?.nodes || []);
 const nodeLayout = {
   root: { order: 0 },
@@ -98,6 +112,167 @@ const selectedBranch = computed(() => {
 const activeNode = computed(() => visibleNodes.value.find((node) => node.id === activeNodeId.value) || visibleNodes.value[0] || null);
 const loadingMessage = computed(() => generationSteps[Math.max(0, currentStep.value)] || generationSteps[0]);
 
+
+function normalizeMaterialReference(material) {
+  return {
+    id: material.id,
+    title: material.title,
+    type: material.type || '资料',
+    status: material.parseStatus || material.status || '已引用',
+    evidence: Number(material.evidenceCount ?? material.evidence ?? material.chunks ?? 0)
+  };
+}
+
+function syncReferencedMaterialSelection(detail = courseDetail.value) {
+  const refs = Array.isArray(detail?.referencedMaterials) ? detail.referencedMaterials : [];
+  selectedMaterialIds.value = refs.map((item) => item.id);
+}
+
+async function loadKnowledgeMaterialOptions() {
+  materialLoading.value = true;
+  materialError.value = '';
+  try {
+    const result = await listKnowledgeMaterials({ pageSize: 100, status: 'active' });
+    availableMaterials.value = result.data || [];
+  } catch (error) {
+    materialError.value = error instanceof Error ? error.message : '资料列表加载失败';
+  } finally {
+    materialLoading.value = false;
+  }
+}
+
+function toggleMaterialSelection(materialId) {
+  const nextIds = new Set(selectedMaterialIds.value);
+  if (nextIds.has(materialId)) {
+    nextIds.delete(materialId);
+  } else {
+    nextIds.add(materialId);
+  }
+  selectedMaterialIds.value = Array.from(nextIds);
+}
+
+async function saveReferencedMaterials() {
+  const selectedSet = new Set(selectedMaterialIds.value);
+  const referenced = availableMaterials.value
+    .filter((material) => selectedSet.has(material.id))
+    .map(normalizeMaterialReference);
+  await ensureCoursePersisted();
+  const savedCourse = await persistCourse(courseId.value, { referencedMaterials: referenced });
+  courseDetail.value = savedCourse;
+  if (mindMap.value) {
+    mindMap.value = { ...mindMap.value, sources: referenced };
+  }
+  materialSelectorOpen.value = false;
+  notify('引用资料已更新');
+}
+
+function normalizeStoredMindMap(storedMindMap) {
+  if (!storedMindMap?.markdown) return null;
+  return {
+    id: storedMindMap.id || `mindmap-${courseId.value}`,
+    title: storedMindMap.title || course.value.shortTitle || course.value.title || 'AI MindMap',
+    courseId: courseId.value,
+    markdown: String(storedMindMap.markdown || '').trim(),
+    sources: referencedMaterials.value,
+    nodes: Array.isArray(storedMindMap.nodes) ? storedMindMap.nodes : [],
+    generatedAt: storedMindMap.generatedAt || null,
+    provider: storedMindMap.provider || null,
+    model: storedMindMap.model || null
+  };
+}
+
+function applyMindMapState(nextMindMap, message = '') {
+  const normalized = normalizeStoredMindMap(nextMindMap);
+  if (!normalized) return;
+  mindMap.value = normalized;
+  editableMarkdown.value = normalized.markdown;
+  revealedNodeCount.value = Math.max(orderedNodes.value.length, normalized.markdown.split('\n').length);
+  generated.value = true;
+  generating.value = false;
+  editingMindMap.value = false;
+  if (message) notify(message);
+}
+
+async function loadPersistedCourseMindMap() {
+  try {
+    const detail = await fetchCourseDetail(courseId.value);
+    courseDetail.value = detail;
+    syncReferencedMaterialSelection(detail);
+    if (courseDetail.value?.mindmap) {
+      applyMindMapState(courseDetail.value.mindmap);
+    } else {
+      mindMap.value = null;
+      editableMarkdown.value = '';
+      generated.value = false;
+      revealedNodeCount.value = 0;
+    }
+  } catch {
+    courseDetail.value = null;
+  }
+}
+
+async function ensureCoursePersisted() {
+  try {
+    const detail = await fetchCourseDetail(courseId.value);
+    courseDetail.value = detail;
+    syncReferencedMaterialSelection(detail);
+    return detail;
+  } catch (error) {
+    const currentCourse = course.value || {};
+    const created = await createCourse({
+      id: courseId.value,
+      title: currentCourse.title || currentCourse.shortTitle || courseId.value,
+      subject: currentCourse.subject || '未提供',
+      grade: currentCourse.grade || '未提供',
+      description: currentCourse.summary || currentCourse.description || null,
+      duration: currentCourse.duration || null,
+      goal: currentCourse.goal || null,
+      knowledge: Array.isArray(currentCourse.knowledge) ? currentCourse.knowledge : [],
+      hasOutline: Boolean(currentCourse.hasOutline),
+      progress: Number.isFinite(Number(currentCourse.progress)) ? Number(currentCourse.progress) : 18,
+      materialUploaded: Boolean(currentCourse.materialUploaded),
+      materialName: currentCourse.materialName || null,
+      referencedMaterials: Array.isArray(currentCourse.referencedMaterials) ? currentCourse.referencedMaterials : [],
+      outline: currentCourse.outline || null,
+      mindmap: currentCourse.mindmap || null
+    });
+    courseDetail.value = created;
+    syncReferencedMaterialSelection(created);
+    return created;
+  }
+}
+
+function buildCourseMindMapPrompt() {
+  const currentCourse = course.value || {};
+  const materialSummary = referencedMaterials.value.map((item) => item.title).join('、') || '未选择';
+  return [
+    '请根据当前课程基础信息生成思维导图。',
+    `课程标题：${currentCourse.title || currentCourse.shortTitle || '未命名课程'}`,
+    `年级：${currentCourse.grade || '未提供'}`,
+    `学科：${currentCourse.subject || '未提供'}`,
+    `课时：${currentCourse.duration || '未提供'}`,
+    `教学目标：${currentCourse.goal || '未提供'}`,
+    `知识点：${Array.isArray(currentCourse.knowledge) ? currentCourse.knowledge.join('、') : '未提供'}`,
+    `引用资料：${materialSummary}`
+  ].join('\n');
+}
+
+async function persistCurrentMindMap(nextMindMap) {
+  if (!nextMindMap?.markdown) return;
+  try {
+    const savedCourse = await persistCourse(courseId.value, {
+      mindmap: {
+        ...nextMindMap,
+        markdown: String(nextMindMap.markdown || '').trim(),
+        updatedAt: new Date().toISOString()
+      }
+    });
+    courseDetail.value = savedCourse;
+  } catch (error) {
+    agentError.value = error instanceof Error ? error.message : '鎬濈淮瀵煎浘淇濆瓨澶辫触';
+  }
+}
+
 function normalizeBranchLabel(value) {
   return String(value || '')
     .replace(/\s+/g, ' ')
@@ -142,6 +317,7 @@ function updateMindMapMarkdown(nextMarkdown, message) {
   editableMarkdown.value = normalized;
   generated.value = true;
   editingMindMap.value = false;
+  persistCurrentMindMap(mindMap.value);
   notify(message);
 }
 
@@ -214,29 +390,18 @@ async function sendMindMapAgentMessage() {
   agentSending.value = true;
 
   try {
-    const response = await fetch('/api/mindmap-agent', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        course: {
-          id: course.value.id,
-          title: course.value.title,
-          shortTitle: course.value.shortTitle
-        },
-        currentMarkdown: currentMarkdown.value,
-        messages: nextMessages
-      })
+    await ensureCoursePersisted();
+    const result = await generateCourseMindMap(courseId.value, {
+      prompt: content,
+      currentMarkdown: currentMarkdown.value,
+      messages: nextMessages
     });
-
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(result.error || 'AI 导图智能体请求失败');
+    if (result.course) {
+      courseDetail.value = result.course;
     }
 
     const replyContent = String(result.content || result.markdown || '').trim();
-    const mindMapMarkdown = extractMindMapBlock(replyContent) || (
+    const mindMapMarkdown = result.mindmap?.markdown || extractMindMapBlock(replyContent) || (
       String(result.markdown || '').trim().startsWith('#') ? String(result.markdown || '').trim() : ''
     );
     const visibleReply = stripMindMapBlock(replyContent) || (
@@ -253,22 +418,14 @@ async function sendMindMapAgentMessage() {
       throw new Error('AI 返回的导图块不是可渲染的 Markdown 导图');
     }
 
-    if (mindMap.value) {
-      updateMindMapMarkdown(mindMapMarkdown, 'AI 导图已更新');
-    } else {
-      mindMap.value = {
-        id: `mindmap-agent-${Date.now()}`,
-        title: course.value.shortTitle || 'AI 思维导图',
-        courseId: courseId.value,
-        markdown: mindMapMarkdown,
-        sources: fallbackSources,
-        nodes: []
-      };
-      editableMarkdown.value = mindMapMarkdown;
-      revealedNodeCount.value = orderedNodes.value.length;
-      generated.value = true;
-      notify('AI 导图已生成');
-    }
+    applyMindMapState(result.mindmap || {
+      id: mindMap.value?.id || `mindmap-agent-${Date.now()}`,
+      title: course.value.shortTitle || course.value.title || 'AI MindMap',
+      courseId: courseId.value,
+      markdown: mindMapMarkdown,
+      sources: fallbackSources,
+      nodes: []
+    }, mindMap.value ? 'AI 导图已更新' : 'AI 导图已生成');
   } catch (error) {
     agentError.value = error instanceof Error ? error.message : 'AI 导图智能体请求失败';
     window.clearInterval(agentTypingTimer);
@@ -277,15 +434,24 @@ async function sendMindMapAgentMessage() {
       ...nextMessages,
       {
         role: 'assistant',
-        content: '本次请求失败，请检查本地 DeepSeek 配置后重试。'
+        content: '本次请求失败，请检查后端 AI 配置后重试。'
       }
     ];
   } finally {
     agentSending.value = false;
   }
 }
+
 async function startGeneration() {
   if (generating.value) return;
+  const prompt = buildCourseMindMapPrompt();
+  const previousMarkdown = currentMarkdown.value;
+  const nextMessages = [
+    ...agentMessages.value,
+    { role: 'user', content: prompt }
+  ];
+  const assistantMessageIndex = nextMessages.length;
+
   generated.value = false;
   generating.value = true;
   editingMindMap.value = false;
@@ -297,32 +463,66 @@ async function startGeneration() {
   activeNodeId.value = 'root';
   mindMap.value = null;
   revealedNodeCount.value = 0;
+  agentMessages.value = [
+    ...nextMessages,
+    { role: 'assistant', content: 'Thinking...', isStreaming: true }
+  ];
+  agentError.value = '';
+  agentSending.value = true;
   window.clearInterval(stepTimer);
   window.clearInterval(revealTimer);
   stepTimer = window.setInterval(() => {
     currentStep.value = Math.min(generationSteps.length - 1, currentStep.value + 1);
   }, 720);
-  const result = await generateMindMap(courseId.value);
-  mindMap.value = result.mindMap;
-  editableMarkdown.value = result.mindMap.markdown || '';
-  revealedNodeCount.value = 1;
-  activeNodeId.value = 'root';
-  revealTimer = window.setInterval(() => {
-    revealedNodeCount.value = Math.min(orderedNodes.value.length, revealedNodeCount.value + 1);
-    if (revealedNodeCount.value >= orderedNodes.value.length) {
-      window.clearInterval(revealTimer);
+
+  try {
+    await ensureCoursePersisted();
+    const result = await generateCourseMindMap(courseId.value, {
+      prompt,
+      currentMarkdown: previousMarkdown,
+      messages: nextMessages
+    });
+    if (result.course) {
+      courseDetail.value = result.course;
     }
-  }, 260);
-  window.setTimeout(() => {
+    const replyContent = String(result.content || result.markdown || '').trim();
+    const visibleReply = stripMindMapBlock(replyContent) || '已根据课程基础信息生成新的思维导图，并保存到课程中。';
+    await streamAgentReply(assistantMessageIndex, visibleReply);
+    applyMindMapState(result.mindmap, '');
+    revealedNodeCount.value = 1;
+    activeNodeId.value = 'root';
+    revealTimer = window.setInterval(() => {
+      const maxCount = Math.max(orderedNodes.value.length, (mindMap.value?.markdown || '').split('\n').length);
+      revealedNodeCount.value = Math.min(maxCount, revealedNodeCount.value + 1);
+      if (revealedNodeCount.value >= maxCount) {
+        window.clearInterval(revealTimer);
+      }
+    }, 260);
+    window.setTimeout(() => {
+      window.clearInterval(stepTimer);
+      window.clearInterval(revealTimer);
+      revealedNodeCount.value = Math.max(orderedNodes.value.length, (mindMap.value?.markdown || '').split('\n').length);
+      currentStep.value = generationSteps.length - 1;
+      generated.value = true;
+      generating.value = false;
+      agentSending.value = false;
+      editableMarkdown.value = mindMap.value?.markdown || '';
+      notify('思维导图已生成');
+    }, 900);
+  } catch (error) {
     window.clearInterval(stepTimer);
     window.clearInterval(revealTimer);
-    revealedNodeCount.value = orderedNodes.value.length;
-    currentStep.value = generationSteps.length - 1;
-    generated.value = true;
     generating.value = false;
-    editableMarkdown.value = mindMap.value?.markdown || '';
-    notify('思维导图已生成');
-  }, 2200);
+    agentSending.value = false;
+    agentError.value = error instanceof Error ? error.message : 'AI 思维导图生成失败';
+    agentMessages.value = [
+      ...nextMessages,
+      {
+        role: 'assistant',
+        content: '本次生成失败，请检查后端 AI 配置后重试。'
+      }
+    ];
+  }
 }
 
 function openMindMapEditor() {
@@ -344,6 +544,7 @@ function applyMindMapEdit() {
   };
   generated.value = true;
   editingMindMap.value = false;
+  persistCurrentMindMap(mindMap.value);
   notify('思维导图已更新');
 }
 
@@ -428,6 +629,18 @@ function goBack() {
   router.push(`/preclass/courses/${course.value.id}/workspace`);
 }
 
+onMounted(() => {
+  loadPersistedCourseMindMap();
+  loadKnowledgeMaterialOptions();
+});
+
+watch(courseId, () => {
+  window.clearInterval(stepTimer);
+  window.clearInterval(revealTimer);
+  window.clearInterval(agentTypingTimer);
+  loadPersistedCourseMindMap();
+});
+
 onUnmounted(() => {
   window.clearInterval(stepTimer);
   window.clearInterval(revealTimer);
@@ -440,20 +653,20 @@ onUnmounted(() => {
     <header class="mind-top">
       <button class="mind-btn back-btn" type="button" @click="goBack">
         <span class="material-symbols-outlined">chevron_left</span>
-        返回备课
+        杩斿洖澶囪
       </button>
       <div class="mind-title">
-        <h1>{{ course.shortTitle }} · 思维导图</h1>
+        <h1>{{ course.shortTitle }} 路 鎬濈淮瀵煎浘</h1>
         <p>{{ generated ? '已基于知识库资料生成，可继续用于 PPT、题目和讲解脚本。' : '从已引用资料中提取知识点、关系和薄弱点，生成可演示的备课思维导图。' }}</p>
       </div>
       <div class="mind-actions">
         <button class="mind-btn" type="button" :disabled="!generated || generating" @click="startGeneration">
           <span class="material-symbols-outlined">refresh</span>
-          重新生成
+          閲嶆柊鐢熸垚
         </button>
         <button class="mind-primary" type="button" :disabled="!generated" @click="router.push(`/preclass/courses/${course.id}/ppt`)">
           <span class="material-symbols-outlined">desktop_windows</span>
-          生成 PPT
+          鐢熸垚 PPT
         </button>
       </div>
     </header>
@@ -462,11 +675,11 @@ onUnmounted(() => {
       <nav class="mind-rail" aria-label="课程工作台步骤">
         <button class="mind-step" type="button" @click="router.push(`/preclass/courses/${course.id}/workspace`)">
           <span class="material-symbols-outlined">auto_awesome</span>
-          生成
+          鐢熸垚
         </button>
         <button class="mind-step active" type="button">
           <span class="material-symbols-outlined">account_tree</span>
-          导图
+          瀵煎浘
         </button>
         <button class="mind-step" type="button" @click="router.push(`/preclass/courses/${course.id}/ppt`)">
           <span class="material-symbols-outlined">desktop_windows</span>
@@ -474,28 +687,57 @@ onUnmounted(() => {
         </button>
         <button class="mind-step" type="button" @click="router.push(`/preclass/courses/${course.id}/lesson-plan`)">
           <span class="material-symbols-outlined">article</span>
-          教案
+          鏁欐
         </button>
         <button class="mind-step" type="button" @click="router.push(`/preclass/courses/${course.id}/analysis`)">
           <span class="material-symbols-outlined">analytics</span>
-          题析
+          棰樻瀽
         </button>
         <div class="mind-ai-mark">AI</div>
       </nav>
 
-      <aside class="mind-sources">
+      <aside class="mind-sources" :class="{ selecting: materialSelectorOpen }">
         <header>
           <span class="small-chip">知识库来源</span>
           <h2>引用资料</h2>
         </header>
+                <button class="mind-btn material-pick-btn" type="button" @click="materialSelectorOpen = !materialSelectorOpen">
+          <span class="material-symbols-outlined">library_add_check</span>
+          閫夋嫨璧勬枡
+        </button>
+        <section v-if="materialSelectorOpen" class="material-selector">
+          <p v-if="materialLoading" class="material-selector-note">璧勬枡鍔犺浇涓?..</p>
+          <p v-else-if="materialError" class="material-selector-error">{{ materialError }}</p>
+          <div v-else class="material-option-list">
+            <button
+              v-for="material in availableMaterials"
+              :key="material.id"
+              class="material-option"
+              :class="{ selected: selectedMaterialIds.includes(material.id) }"
+              type="button"
+              @click="toggleMaterialSelection(material.id)"
+            >
+              <span class="material-symbols-outlined">
+                {{ selectedMaterialIds.includes(material.id) ? 'check_box' : 'check_box_outline_blank' }}
+              </span>
+              <strong>{{ material.title }}</strong>
+              <em>{{ selectedMaterialIds.includes(material.id) ? '已引用' : `${material.type} · ${material.parseStatus}` }}</em>
+            </button>
+          </div>
+          <footer>
+            <button class="mind-btn" type="button" @click="materialSelectorOpen = false">鍙栨秷</button>
+            <button class="mind-primary" type="button" :disabled="materialLoading" @click="saveReferencedMaterials">淇濆瓨寮曠敤</button>
+          </footer>
+        </section>
         <div class="mind-source-list">
           <article v-for="source in sources" :key="source.id" class="mind-source">
             <div>
               <strong>{{ source.title }}</strong>
-              <span>{{ source.type }} · {{ source.status }}</span>
+              <span>{{ source.type }} 路 {{ source.status }}</span>
             </div>
             <em>{{ source.evidence }}</em>
           </article>
+          <p v-if="!sources.length" class="mind-source-empty">尚未选择引用资料。</p>
         </div>
         <section class="mind-detail-card node-edit-panel">
           <span class="small-chip">
@@ -504,7 +746,7 @@ onUnmounted(() => {
           </span>
           <template v-if="selectedBranch">
             <h2>{{ selectedBranch.title }}</h2>
-            <p>已选中当前导图节点，可直接添加分支、重命名或删除，系统会自动同步到底层大纲并重新渲染。</p>
+            <p>已选中当前导图节点，可以直接添加分支、重命名或删除，并同步到导图 Markdown。</p>
             <label class="node-edit-field">
               <span>新分支名称</span>
               <input v-model="newBranchTitle" type="text" placeholder="例如：参数变化规律" @keyup.enter="addChildBranch" />
@@ -548,16 +790,16 @@ onUnmounted(() => {
               <span class="material-symbols-outlined">hub</span>
               AI MindMap
             </span>
-            <h2>{{ mindMap?.title || '等待生成思维导图' }}</h2>
+            <h2>{{ mindMap?.title || '绛夊緟鐢熸垚鎬濈淮瀵煎浘' }}</h2>
           </div>
           <div class="mind-canvas-tools">
             <button class="mind-btn mind-edit-toggle" type="button" :disabled="!generated || generating" @click="openMindMapEditor">
               <span class="material-symbols-outlined">edit_note</span>
-              编辑导图
+              缂栬緫瀵煎浘
             </button>
             <button class="mind-generate" type="button" :disabled="generating" @click="startGeneration">
               <span class="material-symbols-outlined" :class="{ spinning: generating }">{{ generating ? 'progress_activity' : 'auto_awesome' }}</span>
-              {{ generating ? '正在生成...' : generated ? '重新生成导图' : 'AI 生成思维导图' }}
+              {{ generating ? '姝ｅ湪鐢熸垚...' : generated ? '閲嶆柊鐢熸垚瀵煎浘' : 'AI 鐢熸垚鎬濈淮瀵煎浘' }}
             </button>
           </div>
         </div>
@@ -574,23 +816,23 @@ onUnmounted(() => {
               <header>
                 <span class="small-chip">
                   <span class="material-symbols-outlined">edit_note</span>
-                  手动编辑
+                  鎵嬪姩缂栬緫
                 </span>
-                <button class="mind-icon-btn" type="button" aria-label="关闭编辑" @click="cancelMindMapEdit">
+                <button class="mind-icon-btn" type="button" aria-label="鍏抽棴缂栬緫" @click="cancelMindMapEdit">
                   <span class="material-symbols-outlined">close</span>
                 </button>
               </header>
-              <textarea v-model="editableMarkdown" spellcheck="false" aria-label="思维导图 Markdown 大纲"></textarea>
+              <textarea v-model="editableMarkdown" spellcheck="false" aria-label="鎬濈淮瀵煎浘 Markdown 澶х翰"></textarea>
               <footer>
-                <button class="mind-btn" type="button" @click="cancelMindMapEdit">取消</button>
-                <button class="mind-primary" type="button" @click="applyMindMapEdit">应用修改</button>
+                <button class="mind-btn" type="button" @click="cancelMindMapEdit">鍙栨秷</button>
+                <button class="mind-primary" type="button" @click="applyMindMapEdit">搴旂敤淇敼</button>
               </footer>
             </aside>
           </template>
           <div v-else class="mind-empty">
             <span class="material-symbols-outlined" :class="{ spinning: generating }">{{ generating ? 'progress_activity' : 'account_tree' }}</span>
             <strong>{{ generating ? 'AI 正在生成导图' : '从课程资料生成第一版思维导图' }}</strong>
-            <p>{{ generating ? '系统正在提取知识点、关系和学生薄弱点。' : '点击生成后，将模拟资料读取、知识点抽取和导图成型过程。' }}</p>
+            <p>{{ generating ? '系统正在提取知识点、关系和学生薄弱点。' : '点击生成后，将读取引用资料、抽取知识点并生成导图。' }}</p>
           </div>
         </div>
       </section>
@@ -600,7 +842,7 @@ onUnmounted(() => {
           <header>
             <span class="small-chip">
               <span class="material-symbols-outlined">smart_toy</span>
-              AI 导图智能体
+              AI 瀵煎浘鏅鸿兘浣?
             </span>
             <em>{{ agentSending ? '生成中' : 'DeepSeek' }}</em>
           </header>
@@ -619,7 +861,7 @@ onUnmounted(() => {
             <textarea
               v-model="agentDraft"
               :disabled="agentSending"
-              placeholder="例如：把二次函数的易错点和配方法关系补充得更清楚"
+              placeholder="例如：把易错点和教学建议补充得更清楚"
               @keydown.enter.exact.prevent="sendMindMapAgentMessage"
             ></textarea>
             <button class="mind-primary" type="button" :disabled="!agentDraft.trim() || agentSending" @click="sendMindMapAgentMessage">
@@ -787,7 +1029,10 @@ onUnmounted(() => {
 }
 
 .mind-sources {
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
   padding-bottom: 28px;
   scrollbar-width: none;
 }
@@ -802,10 +1047,107 @@ onUnmounted(() => {
   font-size: 22px;
 }
 
+.material-pick-btn {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.material-selector {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  flex: 0 0 auto;
+  gap: 10px;
+  max-height: min(340px, 38vh);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .72);
+  padding: 12px;
+}
+
+.material-option-list {
+  display: grid;
+  min-height: 0;
+  gap: 8px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.material-option {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(247, 252, 249, .78);
+  color: var(--ink);
+  padding: 10px;
+  text-align: left;
+}
+
+.material-option.selected {
+  border-color: rgba(47, 172, 102, .38);
+  background: var(--mint);
+}
+
+.material-option .material-symbols-outlined {
+  color: var(--green);
+  font-size: 20px;
+}
+
+.material-option strong,
+.material-option em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.material-option strong {
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.material-option em {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.material-selector footer {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.material-selector-note,
+.material-selector-error,
+.mind-source-empty {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.material-selector-error {
+  color: #b33b42;
+}
+
 .mind-source-list {
   display: grid;
+  flex: 0 1 250px;
+  min-height: 100px;
+  max-height: 250px;
   gap: 12px;
-  margin-top: 18px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.mind-sources.selecting .mind-source-list {
+  flex-basis: 190px;
+  max-height: 190px;
 }
 
 .mind-source {
@@ -1223,7 +1565,11 @@ onUnmounted(() => {
 }
 
 .mind-sources .mind-detail-card {
-  margin-top: 14px;
+  flex: 1 1 230px;
+  min-height: 230px;
+  margin-top: 0;
+  overflow-y: auto;
+  padding-bottom: 18px;
 }
 
 .mind-detail-card h2 {

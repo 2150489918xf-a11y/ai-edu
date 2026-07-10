@@ -3,18 +3,18 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import AiChat from '../components/AiChat.vue';
 import { parseQuestionsFromAiText } from '../data/aiQuestionParser';
-import { createQuestion, getQuestionBank } from '../data/questionBankApiClient';
+import { createQuestion, generateAiQuestions, getQuestionBank, streamAiQuestions } from '../data/questionBankApiClient';
 import { getAnsweredCourseQuestions, getBank, notify, store } from '../data/mockStore';
 
 const route = useRoute();
 const router = useRouter();
-const aiLoading = ref(false);
+const chatLoading = ref(false);
 const saving = ref(false);
 const selected = ref([]);
 const candidateQuestions = ref([]);
 const currentBank = ref(getBank(route.params.bankId));
-const teacherPrompt = ref('围绕牛顿第二定律，生成适合高一课堂即时检测的题目，重点考查合外力、加速度方向和 F=ma 基础应用。');
 const selectedAnalysisId = ref('newton-q3');
+const editingQuestionId = ref('');
 const aiMessages = ref([
   {
     role: 'ai',
@@ -27,9 +27,14 @@ const analysisQuestions = computed(() => getAnsweredCourseQuestions(store.select
 const selectedAnalysis = computed(() => store.afterClass.questionAnalysis[selectedAnalysisId.value] || store.afterClass.questionAnalysis['newton-q1']);
 const selectedAnalysisQuestion = computed(() => store.questions.find((question) => question.id === selectedAnalysisId.value) || analysisQuestions.value[0] || store.questions[0]);
 const selectedQuestions = computed(() => candidateQuestions.value.filter((question) => selected.value.includes(question.id)));
+const editingQuestion = computed(() => candidateQuestions.value.find((question) => question.id === editingQuestionId.value) || null);
+const candidateLoading = computed(() => chatLoading.value && !candidateQuestions.value.length);
 
 function stripQuestionBlocks(text) {
-  return String(text).replace(/:::questions\s*[\s\S]*?\s*:::/g, '').trim();
+  return String(text)
+    .replace(/:::questions\s*[\s\S]*?\s*:::/gi, '')
+    .replace(/:::question-start\s*[\s\S]*?\s*:::question-end/gi, '')
+    .trim();
 }
 
 function buildAiReply(inputText) {
@@ -75,8 +80,10 @@ function buildAiReply(inputText) {
   ].join('\n');
 }
 
-function addParsedQuestions(rawReply) {
-  const parsed = parseQuestionsFromAiText(rawReply);
+function addParsedQuestions(rawReply, parsedQuestions = null) {
+  const parsed = Array.isArray(parsedQuestions) && parsedQuestions.length
+    ? parsedQuestions
+    : parseQuestionsFromAiText(rawReply);
   if (!parsed.length) {
     notify('AI 回复中没有识别到结构化题目');
     return;
@@ -96,26 +103,161 @@ function addParsedQuestions(rawReply) {
   notify(`已解析 ${additions.length} 道候选题`);
 }
 
-function sendAiMessage(inputText) {
-  const text = inputText.trim();
-  if (!text || aiLoading.value) return;
+function appendCandidateQuestion(question) {
+  if (!question?.title) return;
+  const existing = candidateQuestions.value.some((item) => item.title === question.title);
+  if (existing) return;
+  const id = `ai-candidate-${Date.now()}-${candidateQuestions.value.length + 1}`;
+  candidateQuestions.value = [{ ...question, id }, ...candidateQuestions.value];
+  selected.value = [...new Set([id, ...selected.value])];
+}
+
+function replaceEditingQuestion(rawReply, parsedQuestions = null) {
+  const parsed = Array.isArray(parsedQuestions) && parsedQuestions.length
+    ? parsedQuestions
+    : parseQuestionsFromAiText(rawReply);
+  const nextQuestion = parsed[0];
+  if (!editingQuestion.value || !nextQuestion) return false;
+
+  candidateQuestions.value = candidateQuestions.value.map((question) => (
+    question.id === editingQuestion.value.id
+      ? { ...question, ...nextQuestion, id: question.id }
+      : question
+  ));
+  selected.value = [...new Set([...selected.value, editingQuestion.value.id])];
+  notify('已替换当前编辑题目');
+  editingQuestionId.value = '';
+  return true;
+}
+
+function replaceEditingQuestionWithQuestion(question) {
+  if (!editingQuestion.value || !question?.title) return false;
+  const targetId = editingQuestion.value.id;
+  candidateQuestions.value = candidateQuestions.value.map((item) => (
+    item.id === targetId ? { ...item, ...question, id: targetId } : item
+  ));
+  selected.value = [...new Set([...selected.value, targetId])];
+  editingQuestionId.value = '';
+  notify('已替换当前编辑题目');
+  return true;
+}
+
+function getOrdinalEditingQuestion(text) {
+  const match = String(text).match(/第\s*([一二三四五六七八九十\d]+)\s*题/);
+  if (!match) return null;
+  const map = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+  const index = Number(match[1]) || map[match[1]];
+  return Number.isFinite(index) ? candidateQuestions.value[index - 1] : null;
+}
+
+function getRequestMode(text) {
+  if (editingQuestion.value || getOrdinalEditingQuestion(text)) return 'edit';
+  return /修改|优化|改成|改为|降低|提高|重写|替换/.test(text) && candidateQuestions.value.length ? 'edit' : 'generate';
+}
+
+function buildStructuredPrompt() {
+  return [
+    `围绕${currentBank.value?.title || '当前题库'}生成课堂检测题。`,
+    `重点参考学情：${selectedAnalysisQuestion.value?.title || '当前薄弱点'}。`,
+    '题型数量：单选 3 道，多选 1 道，计算 2 道。',
+    '难度分布：基础 40%，理解 40%，提升 20%。'
+  ].join('\n');
+}
+
+function startEditingQuestion(question) {
+  editingQuestionId.value = question.id;
+  notify('已选中题目，可在右侧输入修改要求');
+}
+
+function buildAiRequest(text, mode) {
+  return {
+    prompt: text,
+    mode,
+    analysis: {
+      id: selectedAnalysisId.value,
+      title: selectedAnalysisQuestion.value?.title || '',
+      accuracy: selectedAnalysisQuestion.value?.accuracy ?? null,
+      detail: selectedAnalysis.value || {}
+    },
+    candidateQuestions: candidateQuestions.value,
+    editingQuestion: mode === 'edit' ? editingQuestion.value : null,
+    messages: aiMessages.value.map((message) => ({
+      role: message.role,
+      text: message.text
+    }))
+  };
+}
+
+function handleStreamQuestion(question, mode) {
+  if (mode === 'edit' && replaceEditingQuestionWithQuestion(question)) return;
+  appendCandidateQuestion(question);
+}
+
+function getCleanStreamingText(text) {
+  const cleaned = stripQuestionBlocks(text);
+  return cleaned.includes(':::question') || cleaned.includes(':::questions') ? '' : cleaned;
+}
+
+async function sendAiMessage(inputText) {
+  const text = String(inputText || '').trim();
+  if (!text || chatLoading.value) return;
 
   aiMessages.value.push({ role: 'teacher', text });
-  aiLoading.value = true;
-  window.setTimeout(() => {
-    const rawReply = buildAiReply(text);
-    aiMessages.value.push({
+  chatLoading.value = true;
+  try {
+    const ordinalQuestion = getOrdinalEditingQuestion(text);
+    if (!editingQuestion.value && ordinalQuestion) {
+      editingQuestionId.value = ordinalQuestion.id;
+    }
+    const mode = getRequestMode(text);
+    const request = buildAiRequest(text, mode);
+    const assistantMessage = {
       role: 'ai',
-      title: '已解析题目',
-      text: stripQuestionBlocks(rawReply)
+      title: 'AI 正在生成',
+      text: ''
+    };
+    aiMessages.value.push(assistantMessage);
+    await streamAiQuestions(route.params.bankId, request, {
+      onDelta: (delta) => {
+        assistantMessage.rawText = `${assistantMessage.rawText || ''}${delta}`;
+        assistantMessage.text = getCleanStreamingText(assistantMessage.rawText) || '正在逐题解析，完整题目会直接进入候选区。';
+      },
+      onQuestion: (question) => {
+        handleStreamQuestion(question, mode);
+      },
+      onDone: (meta) => {
+        assistantMessage.title = [meta.provider, meta.model].filter(Boolean).join(' · ') || 'AI 已生成';
+        assistantMessage.text = stripQuestionBlocks(assistantMessage.text) || '已逐题解析到候选区。';
+      }
     });
-    addParsedQuestions(rawReply);
-    aiLoading.value = false;
-  }, 1200);
+  } catch (error) {
+    try {
+      const mode = getRequestMode(text);
+      const result = await generateAiQuestions(route.params.bankId, buildAiRequest(text, mode));
+      const rawReply = result.reply || '';
+      const modelLabel = [result.provider, result.model].filter(Boolean).join(' · ');
+      aiMessages.value.push({
+        role: 'ai',
+        title: `${modelLabel || 'AI 已生成'} · 非流式`,
+        text: stripQuestionBlocks(rawReply) || 'AI 已返回结构化题目，请在候选区确认后保存。'
+      });
+      if (mode === 'edit' && replaceEditingQuestion(rawReply, result.questions)) return;
+      addParsedQuestions(rawReply, result.questions);
+    } catch (fallbackError) {
+      notify(fallbackError.message || error.message || 'AI 题目生成失败');
+      aiMessages.value.push({
+        role: 'ai',
+        title: '生成失败',
+        text: fallbackError.message || error.message || 'AI 题目生成失败，请检查后端 AI 配置。'
+      });
+    }
+  } finally {
+    chatLoading.value = false;
+  }
 }
 
 function generate() {
-  sendAiMessage(teacherPrompt.value);
+  sendAiMessage(buildStructuredPrompt());
 }
 
 function regenerate() {
@@ -176,9 +318,9 @@ watch(() => route.params.bankId, loadBank);
           <span class="material-symbols-outlined">chevron_left</span>
           返回题库
         </button>
-        <button class="primary-btn" type="button" :disabled="aiLoading" @click="generate">
-          <span class="material-symbols-outlined">{{ aiLoading ? 'progress_activity' : 'auto_awesome' }}</span>
-          {{ aiLoading ? '生成中' : '生成题目' }}
+        <button class="primary-btn" type="button" :disabled="chatLoading" @click="generate">
+          <span class="material-symbols-outlined">{{ chatLoading ? 'progress_activity' : 'auto_awesome' }}</span>
+          {{ chatLoading ? '生成中' : '生成题目' }}
         </button>
       </div>
     </section>
@@ -203,12 +345,10 @@ watch(() => route.params.bankId, loadBank);
           <span class="small-chip"><span class="material-symbols-outlined">analytics</span>已引用</span>
           <p>{{ selectedAnalysis.advice }}</p>
         </div>
-        <label class="form-label">老师生成要求</label>
-        <textarea
-          v-model="teacherPrompt"
-          class="teacher-prompt"
-          placeholder="输入题目用途、知识点、难度和课堂场景..."
-        ></textarea>
+        <div class="settings-note">
+          <span class="material-symbols-outlined">chat</span>
+          <p>自然语言要求请直接在右侧 AI 输入框里补充；左侧只保留可复用的生成参数。</p>
+        </div>
         <label class="form-label">知识点</label>
         <div class="fake-chip-input">
           <span>F=ma ×</span>
@@ -227,9 +367,9 @@ watch(() => route.params.bankId, loadBank);
           <button class="active" type="button">理解 40%</button>
           <button type="button">提升 20%</button>
         </div>
-        <button class="outline-generate-btn" type="button" :disabled="aiLoading" @click="generate">
-          <span class="material-symbols-outlined">{{ aiLoading ? 'progress_activity' : 'auto_awesome' }}</span>
-          {{ aiLoading ? 'AI 正在生成...' : '生成课堂题' }}
+        <button class="outline-generate-btn" type="button" :disabled="chatLoading" @click="generate">
+          <span class="material-symbols-outlined">{{ chatLoading ? 'progress_activity' : 'auto_awesome' }}</span>
+          {{ chatLoading ? 'AI 正在生成...' : '按当前设置生成' }}
         </button>
       </article>
 
@@ -239,19 +379,30 @@ watch(() => route.params.bankId, loadBank);
             <span class="small-chip">候选题</span>
             <h2>{{ candidateQuestions.length ? '可保存进当前题库的题目' : '等待 AI 解析题目' }}</h2>
           </div>
-          <button class="soft-btn" type="button" :disabled="aiLoading" @click="regenerate">
+          <button class="soft-btn" type="button" :disabled="chatLoading" @click="regenerate">
             再生成一组
           </button>
         </header>
 
-        <div v-if="aiLoading" class="generation-loading">
+        <div v-if="editingQuestion" class="editing-context">
+          <span class="material-symbols-outlined">edit_note</span>
+          <p>正在编辑：{{ editingQuestion.title }}</p>
+          <button type="button" @click="editingQuestionId = ''">取消</button>
+        </div>
+
+        <div v-if="candidateLoading" class="generation-loading">
           <span class="material-symbols-outlined">auto_awesome</span>
           <strong>AI 正在组织题干、选项和解析</strong>
           <p>正在引用“{{ selectedAnalysisQuestion.title }}”的学情分析，补强薄弱知识点。</p>
         </div>
 
         <div v-else-if="candidateQuestions.length" class="list-panel">
-          <article v-for="question in candidateQuestions" :key="question.id" class="question-row picking">
+          <article
+            v-for="question in candidateQuestions"
+            :key="question.id"
+            class="question-row picking"
+            :class="{ editing: editingQuestionId === question.id }"
+          >
             <button class="select-dot" :class="{ active: selected.includes(question.id) }" type="button" @click="toggle(question.id)">
               <span class="material-symbols-outlined">check</span>
             </button>
@@ -265,7 +416,10 @@ watch(() => route.params.bankId, loadBank);
               <p>{{ question.options?.length ? question.options.join('　') : question.analysis }}</p>
               <p class="candidate-answer">答案：{{ question.answer || '待补充' }}</p>
             </div>
-            <button class="soft-btn" type="button" @click="notify(question.analysis || '暂无解析')">解析</button>
+            <div class="question-actions">
+              <button class="soft-btn" type="button" @click="startEditingQuestion(question)">编辑这题</button>
+              <button class="soft-btn" type="button" @click="notify(question.analysis || '暂无解析')">解析</button>
+            </div>
           </article>
         </div>
         <div v-else class="empty-generate-panel">
@@ -286,7 +440,8 @@ watch(() => route.params.bankId, loadBank);
         class="question-ai-chat"
         title="AI 出题助手"
         :messages="aiMessages"
-        :loading="aiLoading"
+        :loading="chatLoading"
+        :show-thinking="false"
         loading-label="生成中"
         placeholder="继续告诉 AI：题型、难度、知识点或要避开的错误..."
         send-label="发送"
@@ -303,6 +458,10 @@ watch(() => route.params.bankId, loadBank);
   font-weight: 800;
 }
 
+.question-generate-page {
+  --question-workspace-height: calc(100vh - 178px);
+}
+
 .ai-question-layout {
   display: grid;
   grid-template-columns: 1fr;
@@ -317,6 +476,9 @@ watch(() => route.params.bankId, loadBank);
 }
 
 .generate-form {
+  height: auto;
+  min-height: 0;
+  overflow-y: auto;
   background:
     linear-gradient(180deg, rgba(220, 246, 232, .72), rgba(255, 255, 255, .72)),
     var(--surface-glass);
@@ -375,24 +537,33 @@ watch(() => route.params.bankId, loadBank);
   line-height: 1.6;
 }
 
-.teacher-prompt {
-  width: 100%;
-  min-height: 118px;
-  resize: vertical;
+.settings-note {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: rgba(255, 255, 255, .72);
-  padding: 12px 14px;
-  color: var(--ink);
-  font: inherit;
-  font-size: 13px;
-  line-height: 1.6;
-  outline: none;
+  padding: 12px;
 }
 
-.teacher-prompt:focus {
-  border-color: rgba(31, 181, 95, .48);
-  box-shadow: 0 0 0 3px rgba(47, 172, 102, .12);
+.settings-note .material-symbols-outlined {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--mint);
+  color: var(--green);
+  font-size: 18px;
+}
+
+.settings-note p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .primary-btn:disabled,
@@ -487,7 +658,10 @@ watch(() => route.params.bankId, loadBank);
 }
 
 .generated-panel {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   min-width: 0;
+  min-height: 0;
 }
 
 .generated-panel header,
@@ -517,8 +691,68 @@ watch(() => route.params.bankId, loadBank);
   font-weight: 700;
 }
 
+.generated-panel .list-panel {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.editing-context {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+  border: 1px solid rgba(47, 172, 102, .28);
+  border-radius: 10px;
+  background: rgba(220, 246, 232, .42);
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.editing-context .material-symbols-outlined {
+  color: var(--green);
+  font-size: 20px;
+}
+
+.editing-context p {
+  min-width: 0;
+  overflow: hidden;
+  margin: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editing-context button {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--muted);
+  padding: 0 10px;
+  font-weight: 700;
+}
+
 .question-row.picking {
   grid-template-columns: 34px minmax(0, 1fr) auto;
+}
+
+.question-row.editing {
+  border-color: rgba(47, 172, 102, .48);
+  background: rgba(244, 250, 246, .88);
+  box-shadow: inset 0 0 0 1px rgba(47, 172, 102, .20);
+}
+
+.question-actions {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.question-actions .soft-btn {
+  min-height: 36px;
+  white-space: nowrap;
 }
 
 .candidate-answer {
@@ -549,6 +783,7 @@ watch(() => route.params.bankId, loadBank);
 }
 
 .question-ai-chat {
+  height: min(680px, var(--question-workspace-height));
   min-height: 560px;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -562,6 +797,7 @@ watch(() => route.params.bankId, loadBank);
 
   .question-ai-chat {
     grid-column: 1 / -1;
+    height: min(620px, var(--question-workspace-height));
   }
 }
 
@@ -569,11 +805,18 @@ watch(() => route.params.bankId, loadBank);
   .ai-question-layout {
     grid-template-columns: minmax(280px, 330px) minmax(0, 1fr) minmax(320px, 360px);
     align-items: stretch;
+    height: var(--question-workspace-height);
+  }
+
+  .generate-form,
+  .generated-panel,
+  .question-ai-chat {
+    height: var(--question-workspace-height);
   }
 
   .question-ai-chat {
     grid-column: auto;
-    min-height: 760px;
+    min-height: 0;
   }
 }
 </style>

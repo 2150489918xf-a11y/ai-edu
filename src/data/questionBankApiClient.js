@@ -45,12 +45,79 @@ export async function getQuestionBank(bankId) {
   return payload.data;
 }
 
+export async function createQuestionBank(bank) {
+  const payload = await requestJson('/question-banks', {
+    method: 'POST',
+    body: JSON.stringify(bank)
+  });
+  return payload.data;
+}
+
 export async function createQuestion(bankId, question) {
   const payload = await requestJson(`/question-banks/${encodeURIComponent(bankId)}/questions`, {
     method: 'POST',
     body: JSON.stringify(question)
   });
   return payload.data;
+}
+
+export async function generateAiQuestions(bankId, request = {}) {
+  const payload = await requestJson(`/question-banks/${encodeURIComponent(bankId)}/ai-generate`, {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+  return payload.data;
+}
+
+function parseSseFrame(frame) {
+  const eventLine = frame.split(/\r?\n/).find((line) => line.startsWith('event:'));
+  const dataLines = frame.split(/\r?\n/).filter((line) => line.startsWith('data:'));
+  if (!eventLine || !dataLines.length) return null;
+  const event = eventLine.slice(6).trim();
+  const rawData = dataLines.map((line) => line.slice(5).trim()).join('\n');
+  try {
+    return { event, data: JSON.parse(rawData) };
+  } catch {
+    return null;
+  }
+}
+
+export async function streamAiQuestions(bankId, request = {}, handlers = {}) {
+  const apiBaseUrl = getApiBaseUrl();
+  if (!apiBaseUrl) throw new Error('Missing VITE_API_BASE_URL');
+
+  const response = await fetch(`${apiBaseUrl}/question-banks/${encodeURIComponent(bankId)}/ai-generate-stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request)
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error?.message || `Request failed with ${response.status}`);
+  }
+  if (!response.body?.getReader) {
+    throw new Error('Streaming is not supported in this browser');
+  }
+
+  const decoder = new TextDecoder();
+  const reader = response.body.getReader();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const frames = buffer.split(/\n\n/);
+    buffer = frames.pop() || '';
+    for (const frame of frames) {
+      const parsed = parseSseFrame(frame);
+      if (!parsed) continue;
+      if (parsed.event === 'delta') handlers.onDelta?.(parsed.data.text || '');
+      if (parsed.event === 'question') handlers.onQuestion?.(parsed.data.question);
+      if (parsed.event === 'done') handlers.onDone?.(parsed.data);
+      if (parsed.event === 'error') throw new Error(parsed.data.message || 'AI stream failed');
+    }
+  }
 }
 
 export async function updateQuestion(questionId, patch) {

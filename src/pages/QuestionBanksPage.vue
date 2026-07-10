@@ -1,14 +1,24 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { listQuestionBanks } from '../data/questionBankApiClient';
+import { createQuestionBank, listQuestionBanks } from '../data/questionBankApiClient';
 import { getCourseQuestions, notify, store } from '../data/mockStore';
 
 const router = useRouter();
 const activeTab = ref('全部');
 const keyword = ref('');
 const loading = ref(false);
+const bankSaving = ref(false);
+const bankDialogOpen = ref(false);
 const banks = ref([]);
+const bankForm = ref({
+  title: '',
+  subject: '物理',
+  grade: '高一',
+  usage: '课中练习',
+  description: '',
+  tagsText: ''
+});
 const tabs = ['全部', '物理', '数学', '已归档'];
 
 const filteredBanks = computed(() => {
@@ -37,6 +47,69 @@ async function loadBanks() {
   }
 }
 
+function resetBankForm() {
+  bankForm.value = {
+    title: '',
+    subject: '物理',
+    grade: '高一',
+    usage: '课中练习',
+    description: '',
+    tagsText: ''
+  };
+}
+
+function openCreateBank() {
+  resetBankForm();
+  bankDialogOpen.value = true;
+}
+
+function closeCreateBank() {
+  if (bankSaving.value) return;
+  bankDialogOpen.value = false;
+}
+
+function parseTags(text) {
+  return String(text || '')
+    .split(/[\n,，、]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+async function submitBank() {
+  const title = bankForm.value.title.trim();
+  const subject = bankForm.value.subject.trim();
+  if (!title) {
+    notify('请先填写题库名称');
+    return;
+  }
+  if (!subject) {
+    notify('请先填写学科');
+    return;
+  }
+
+  bankSaving.value = true;
+  try {
+    const created = await createQuestionBank({
+      title,
+      subject,
+      grade: bankForm.value.grade.trim(),
+      usage: bankForm.value.usage.trim(),
+      description: bankForm.value.description.trim(),
+      tags: parseTags(bankForm.value.tagsText)
+    });
+    bankDialogOpen.value = false;
+    notify('题库已保存到数据库');
+    await loadBanks();
+    if (created?.id) {
+      router.push(`/question-banks/${created.id}`);
+    }
+  } catch (error) {
+    notify(error.message || '题库保存失败');
+  } finally {
+    bankSaving.value = false;
+  }
+}
+
 onMounted(loadBanks);
 </script>
 
@@ -51,6 +124,10 @@ onMounted(loadBanks);
         <button class="soft-btn" type="button" :disabled="loading" @click="loadBanks">
           <span class="material-symbols-outlined">sync</span>
           刷新
+        </button>
+        <button class="primary-btn" type="button" @click="openCreateBank">
+          <span class="material-symbols-outlined">add</span>
+          新增题库
         </button>
         <button class="primary-btn" type="button" @click="router.push('/question-banks/newton-laws-bank/generate')">
           <span class="material-symbols-outlined">auto_awesome</span>
@@ -99,7 +176,7 @@ onMounted(loadBanks);
     <section v-if="!loading && !filteredBanks.length" class="course-empty">
       <span class="material-symbols-outlined">quiz</span>
       <strong>暂无题库</strong>
-      <p>可以先通过后端接口或 seed 创建题库，进入题库后再手动维护题目。</p>
+      <p>点击“新增题库”手动创建题库，进入题库后再维护题目。</p>
     </section>
 
     <section v-else class="module-grid">
@@ -125,6 +202,55 @@ onMounted(loadBanks);
           <button class="soft-btn" type="button" @click="router.push(`/question-banks/${bank.id}/generate`)">AI 生成</button>
         </div>
       </article>
+    </section>
+
+    <section v-if="bankDialogOpen" class="course-dialog-backdrop" role="presentation" @click.self="closeCreateBank">
+      <form class="course-dialog question-bank-dialog" role="dialog" aria-modal="true" aria-label="新增题库" @submit.prevent="submitBank">
+        <header>
+          <div>
+            <h2>新增题库</h2>
+            <p>手动创建分类题库，保存后可继续添加题目。</p>
+          </div>
+          <button class="dialog-icon-btn" type="button" aria-label="关闭" :disabled="bankSaving" @click="closeCreateBank">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </header>
+
+        <div class="course-form-grid">
+          <label class="course-field wide">
+            <span>题库名称</span>
+            <input v-model="bankForm.title" type="text" placeholder="例如：牛顿第二定律基础题" />
+          </label>
+          <label class="course-field">
+            <span>学科</span>
+            <input v-model="bankForm.subject" type="text" placeholder="物理" />
+          </label>
+          <label class="course-field">
+            <span>年级</span>
+            <input v-model="bankForm.grade" type="text" placeholder="高一" />
+          </label>
+          <label class="course-field wide">
+            <span>使用场景</span>
+            <input v-model="bankForm.usage" type="text" placeholder="课前诊断 / 课中练习 / 课后巩固" />
+          </label>
+          <label class="course-field wide">
+            <span>题库说明</span>
+            <textarea v-model="bankForm.description" rows="3" placeholder="可选，用于说明这套题的使用目标和范围"></textarea>
+          </label>
+          <label class="course-field wide">
+            <span>标签</span>
+            <input v-model="bankForm.tagsText" type="text" placeholder="用逗号分隔，例如：F=ma，合外力，基础题" />
+          </label>
+        </div>
+
+        <footer>
+          <button class="soft-btn" type="button" :disabled="bankSaving" @click="closeCreateBank">取消</button>
+          <button class="primary-btn" type="submit" :disabled="bankSaving">
+            {{ bankSaving ? '保存中' : '保存题库' }}
+            <span class="material-symbols-outlined">save</span>
+          </button>
+        </footer>
+      </form>
     </section>
 
     <section class="question-lab">
@@ -269,5 +395,31 @@ onMounted(loadBanks);
   font-family: var(--font-serif);
   font-size: 18px;
   line-height: 1.55;
+}
+
+.question-bank-dialog {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.question-bank-dialog :deep(.primary-btn:disabled),
+.question-bank-dialog :deep(.soft-btn:disabled),
+.question-bank-dialog :deep(.dialog-icon-btn:disabled) {
+  cursor: not-allowed;
+  opacity: .58;
+}
+
+@media (max-width: 720px) {
+  .question-overview,
+  .question-lab {
+    grid-template-columns: 1fr;
+  }
+
+  .question-lab div {
+    grid-template-columns: 1fr;
+  }
+
+  .question-lab i {
+    display: none;
+  }
 }
 </style>

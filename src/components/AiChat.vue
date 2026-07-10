@@ -30,6 +30,10 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  showThinking: {
+    type: Boolean,
+    default: true
+  },
   showVoice: {
     type: Boolean,
     default: false
@@ -164,7 +168,7 @@ function useSuggestion(suggestion) {
           <span v-if="message.time">王老师 ・ {{ message.time }}</span>
         </template>
       </article>
-      <article v-if="loading" class="message ai ai-thinking">
+      <article v-if="loading && showThinking" class="message ai ai-thinking">
         <img class="ai-logo-avatar" src="/assets/eduai-logo.png" alt="AI" />
         <div class="message-body">
           <div class="ai-meta">
@@ -233,6 +237,8 @@ function useSuggestion(suggestion) {
 .ai-panel {
   position: relative;
   display: grid;
+  height: 100%;
+  min-height: 0;
   grid-template-rows: 58px minmax(0, 1fr) auto;
   border-left: 1px solid var(--line);
   background: rgba(255, 255, 255, .84);
@@ -297,6 +303,7 @@ function useSuggestion(suggestion) {
   min-height: 0;
   padding: 16px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .message {
@@ -335,6 +342,8 @@ function useSuggestion(suggestion) {
   font-size: var(--edu-body);
   line-height: 1.58;
   font-weight: 400;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .message.ai {
@@ -349,6 +358,7 @@ function useSuggestion(suggestion) {
   border-radius: var(--edu-radius-md);
   background: white;
   padding: 11px 13px;
+  overflow: hidden;
 }
 
 .ai-thinking p {
@@ -469,7 +479,10 @@ function useSuggestion(suggestion) {
   position: static;
   inset: auto;
   display: block;
+  flex-shrink: 0;
   padding: 8px 8px 12px;
+  border-top: 1px solid var(--line);
+  background: rgba(255, 255, 255, .92);
 }
 
 .composer-tools {

@@ -65,6 +65,14 @@ export async function updateCourse(courseId, patch) {
   return payload.data;
 }
 
+export async function generateCourseMindMap(courseId, request = {}) {
+  const payload = await requestJson(`/courses/${encodeURIComponent(courseId)}/mindmap/generate`, {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+  return payload.data;
+}
+
 export async function archiveCourse(courseId) {
   const payload = await requestJson(`/courses/${encodeURIComponent(courseId)}`, {
     method: 'DELETE'

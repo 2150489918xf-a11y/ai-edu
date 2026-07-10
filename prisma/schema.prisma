@@ -55,7 +55,10 @@ model Course {
   progress        Int                @default(18)
   materialUploaded Boolean           @default(false) @map("material_uploaded")
   materialName    String?            @map("material_name")
+  referencedMaterials Json            @default("[]") @map("referenced_materials")
   outline         Json?
+  mindmap         Json?
+  lessonPlan      Json?               @map("lesson_plan")
   status          String             @default("active")
   deletedAt       DateTime?          @map("deleted_at")
   knowledgePoints KnowledgePoint[]
@@ -201,4 +204,49 @@ model ParentSummary {
 
   @@unique([studentId, courseId])
   @@map("parent_summaries")
+}
+
+model KnowledgeCategory {
+  id        String              @id @default(uuid())
+  name      String
+  icon      String              @default("folder_open")
+  sortOrder Int                 @default(0) @map("sort_order")
+  status    String              @default("active")
+  deletedAt DateTime?           @map("deleted_at")
+  materials KnowledgeMaterial[]
+  createdAt DateTime            @default(now()) @map("created_at")
+  updatedAt DateTime            @updatedAt @map("updated_at")
+
+  @@map("knowledge_categories")
+}
+
+model KnowledgeMaterial {
+  id               String            @id @default(uuid())
+  categoryId       String            @map("category_id")
+  category         KnowledgeCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  title            String
+  type             String
+  subject          String
+  grade            String
+  size             String?
+  pages            Int               @default(0)
+  parseStatus      String            @default("parsed") @map("parse_status")
+  lifecycleStatus  String            @default("active") @map("lifecycle_status")
+  source           String            @default("手动添加")
+  chunks           Int               @default(0)
+  evidenceCount    Int               @default(0) @map("evidence_count")
+  vectorIndexed    Boolean           @default(false) @map("vector_indexed")
+  bm25Indexed      Boolean           @default(false) @map("bm25_indexed")
+  teacherPinned    Boolean           @default(false) @map("teacher_pinned")
+  tags             Json              @default("[]")
+  knowledgePoints  Json              @default("[]") @map("knowledge_points")
+  retrievalSummary Json?             @map("retrieval_summary")
+  evidenceTypes    Json              @default("[]") @map("evidence_types")
+  availableActions Json              @default("[]") @map("available_actions")
+  usedByCourses    Json              @default("[]") @map("used_by_courses")
+  deletedAt        DateTime?         @map("deleted_at")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+
+  @@map("knowledge_materials")
 }

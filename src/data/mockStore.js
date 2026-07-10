@@ -1,6 +1,6 @@
 import { reactive, watch } from 'vue';
 
-const COURSE_CHAT_STORAGE_KEY = 'eduai.mock.courseChats';
+const COURSE_CHAT_STORAGE_KEY = 'eduai.mock.courseChats.v2';
 const CLASSROOM_STORAGE_KEY = 'eduai.mock.classroom';
 
 function readSavedCourseChats() {
@@ -572,9 +572,7 @@ export function createMockCourse(payload) {
   store.outlines[id] = { ...store.outlines['physics-newton-2'] };
   store.courseChats[id] = {
     scriptStep: 0,
-    messages: [
-      { role: 'ai', text: '王老师，我们先从一门空白新课开始。你可以先告诉我：这节课的学段、学科和主题是什么？' }
-    ]
+    messages: []
   };
   persistCourseChats();
   store.selectedCourseId = id;
@@ -586,14 +584,7 @@ export function getCourseChat(courseId) {
     const course = getCourse(courseId);
     store.courseChats[courseId] = {
       scriptStep: course.infoReady ? 2 : 0,
-      messages: [
-        {
-          role: 'ai',
-          text: course.infoReady
-            ? '我会沿用这门课已经沉淀的上下文，继续帮你调整大纲、课件和课堂活动。'
-            : '王老师，我们先从一门空白新课开始。你可以先告诉我：这节课的学段、学科和主题是什么？'
-        }
-      ]
+      messages: []
     };
   }
   return store.courseChats[courseId];
@@ -703,6 +694,15 @@ export function markOutlineGenerated(courseId) {
   const course = getCourse(courseId);
   course.hasOutline = true;
   course.progress = Math.max(course.progress, 58);
+}
+
+export function setCourseOutline(courseId, outline) {
+  store.outlines[courseId] = outline;
+  const course = getCourse(courseId);
+  course.outline = outline;
+  course.hasOutline = true;
+  course.progress = Math.max(course.progress || 0, 58);
+  return outline;
 }
 
 export function addQuestionToClass(questionId) {

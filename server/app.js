@@ -1,4 +1,4 @@
-import { readJsonBody, sendError, sendJson } from './http.js';
+import { readJsonBody, sendError, sendJson, sendSse, startSse } from './http.js';
 
 function withCors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -12,7 +12,17 @@ function getPageParams(searchParams) {
   return { page, pageSize };
 }
 
-export function createLearningApiApp({ learningService, courseService, classService, studentService, questionBankService }) {
+export function createLearningApiApp({
+  learningService,
+  courseService,
+  classService,
+  studentService,
+  knowledgeService,
+  questionBankService,
+  aiMindMapService,
+  aiQuestionService,
+  aiLessonPlanService
+}) {
   if (!learningService) {
     throw new Error('learningService is required');
   }
@@ -56,6 +66,90 @@ export function createLearningApiApp({ learningService, courseService, classServ
         return;
       }
 
+      if (knowledgeService && req.method === 'GET' && path === '/api/v1/knowledge-categories') {
+        const { page, pageSize } = getPageParams(url.searchParams);
+        const result = await knowledgeService.listCategories({
+          keyword: url.searchParams.get('keyword') || undefined,
+          status: url.searchParams.get('status') || undefined,
+          page,
+          pageSize
+        });
+        sendJson(res, 200, {
+          data: result.categories,
+          pagination: { page, pageSize, total: result.total }
+        });
+        return;
+      }
+
+      if (knowledgeService && req.method === 'POST' && path === '/api/v1/knowledge-categories') {
+        const body = await readJsonBody(req);
+        const data = await knowledgeService.createCategory(body);
+        sendJson(res, 201, { data });
+        return;
+      }
+
+      const knowledgeCategoryMatch = path.match(/^\/api\/v1\/knowledge-categories\/([^/]+)$/);
+      if (knowledgeService && knowledgeCategoryMatch) {
+        const categoryId = decodeURIComponent(knowledgeCategoryMatch[1]);
+        if (req.method === 'PATCH') {
+          const body = await readJsonBody(req);
+          const data = await knowledgeService.updateCategory(categoryId, body);
+          sendJson(res, 200, { data });
+          return;
+        }
+        if (req.method === 'DELETE') {
+          const data = await knowledgeService.archiveCategory(categoryId);
+          sendJson(res, 200, { data });
+          return;
+        }
+      }
+
+      if (knowledgeService && req.method === 'GET' && path === '/api/v1/knowledge-materials') {
+        const { page, pageSize } = getPageParams(url.searchParams);
+        const result = await knowledgeService.listMaterials({
+          categoryId: url.searchParams.get('categoryId') || undefined,
+          type: url.searchParams.get('type') || undefined,
+          parseStatus: url.searchParams.get('parseStatus') || undefined,
+          keyword: url.searchParams.get('keyword') || undefined,
+          status: url.searchParams.get('status') || undefined,
+          page,
+          pageSize
+        });
+        sendJson(res, 200, {
+          data: result.materials,
+          pagination: { page, pageSize, total: result.total }
+        });
+        return;
+      }
+
+      if (knowledgeService && req.method === 'POST' && path === '/api/v1/knowledge-materials') {
+        const body = await readJsonBody(req);
+        const data = await knowledgeService.createMaterial(body);
+        sendJson(res, 201, { data });
+        return;
+      }
+
+      const knowledgeMaterialMatch = path.match(/^\/api\/v1\/knowledge-materials\/([^/]+)$/);
+      if (knowledgeService && knowledgeMaterialMatch) {
+        const materialId = decodeURIComponent(knowledgeMaterialMatch[1]);
+        if (req.method === 'GET') {
+          const data = await knowledgeService.getMaterial(materialId);
+          sendJson(res, 200, { data });
+          return;
+        }
+        if (req.method === 'PATCH') {
+          const body = await readJsonBody(req);
+          const data = await knowledgeService.updateMaterial(materialId, body);
+          sendJson(res, 200, { data });
+          return;
+        }
+        if (req.method === 'DELETE') {
+          const data = await knowledgeService.archiveMaterial(materialId);
+          sendJson(res, 200, { data });
+          return;
+        }
+      }
+
       if (courseService && req.method === 'POST' && path === '/api/v1/courses') {
         const body = await readJsonBody(req);
         const data = await courseService.createCourse(body);
@@ -92,6 +186,50 @@ export function createLearningApiApp({ learningService, courseService, classServ
         const body = await readJsonBody(req);
         const data = await questionBankService.createQuestion(decodeURIComponent(questionBankQuestionMatch[1]), body);
         sendJson(res, 201, { data });
+        return;
+      }
+
+      const aiQuestionGenerateMatch = path.match(/^\/api\/v1\/question-banks\/([^/]+)\/ai-generate$/);
+      if (questionBankService && aiQuestionService && req.method === 'POST' && aiQuestionGenerateMatch) {
+        const bank = await questionBankService.getBank(decodeURIComponent(aiQuestionGenerateMatch[1]));
+        const body = await readJsonBody(req);
+        const data = await aiQuestionService.generateQuestions({
+          bank,
+          prompt: body.prompt || '',
+          analysis: body.analysis || {},
+          messages: body.messages || []
+        });
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      const aiQuestionStreamMatch = path.match(/^\/api\/v1\/question-banks\/([^/]+)\/ai-generate-stream$/);
+      if (questionBankService && aiQuestionService && req.method === 'POST' && aiQuestionStreamMatch) {
+        const bank = await questionBankService.getBank(decodeURIComponent(aiQuestionStreamMatch[1]));
+        const body = await readJsonBody(req);
+        startSse(res);
+        try {
+          await aiQuestionService.streamQuestions({
+            bank,
+            prompt: body.prompt || '',
+            mode: body.mode || 'generate',
+            analysis: body.analysis || {},
+            candidateQuestions: body.candidateQuestions || [],
+            editingQuestion: body.editingQuestion || null,
+            messages: body.messages || []
+          }, {
+            onDelta: (text) => sendSse(res, 'delta', { text }),
+            onQuestion: (question) => sendSse(res, 'question', { question }),
+            onDone: (meta) => sendSse(res, 'done', meta)
+          });
+        } catch (error) {
+          sendSse(res, 'error', {
+            code: error.code || 'AI_STREAM_ERROR',
+            message: error.message || 'AI stream failed'
+          });
+        } finally {
+          res.end();
+        }
         return;
       }
 
@@ -136,6 +274,91 @@ export function createLearningApiApp({ learningService, courseService, classServ
       if (courseService && req.method === 'POST' && courseRestoreMatch) {
         const data = await courseService.restoreCourse(decodeURIComponent(courseRestoreMatch[1]));
         sendJson(res, 200, { data });
+        return;
+      }
+
+      const courseMindMapGenerateMatch = path.match(/^\/api\/v1\/courses\/([^/]+)\/mindmap\/generate$/);
+      if (courseService && aiMindMapService && req.method === 'POST' && courseMindMapGenerateMatch) {
+        const courseId = decodeURIComponent(courseMindMapGenerateMatch[1]);
+        const course = await courseService.getCourse(courseId);
+        const body = await readJsonBody(req);
+        const generated = await aiMindMapService.generateMindMap({
+          course,
+          prompt: body.prompt || '',
+          currentMarkdown: body.currentMarkdown || course.mindmap?.markdown || '',
+          messages: body.messages || []
+        });
+        const mindmap = {
+          id: course.mindmap?.id || `mindmap-${course.id}`,
+          title: course.shortTitle || course.title || 'AI 思维导图',
+          markdown: generated.markdown,
+          provider: generated.provider,
+          model: generated.model,
+          generatedAt: new Date().toISOString()
+        };
+        const savedCourse = await courseService.updateCourse(courseId, {
+          mindmap,
+          progress: Math.max(Number(course.progress || 0), 68)
+        });
+        sendJson(res, 200, {
+          data: {
+            courseId,
+            provider: generated.provider,
+            model: generated.model,
+            content: generated.content,
+            mindmap,
+            course: savedCourse
+          }
+        });
+        return;
+      }
+
+      const courseLessonPlanStreamMatch = path.match(/^\/api\/v1\/courses\/([^/]+)\/lesson-plan\/generate-stream$/);
+      if (courseService && aiLessonPlanService && req.method === 'POST' && courseLessonPlanStreamMatch) {
+        const courseId = decodeURIComponent(courseLessonPlanStreamMatch[1]);
+        const course = await courseService.getCourse(courseId);
+        const body = await readJsonBody(req);
+        let generatedLessonPlan = null;
+        let doneMeta = {};
+        startSse(res);
+        try {
+          await aiLessonPlanService.streamLessonPlan({
+            course,
+            prompt: body.prompt || '',
+            currentLessonPlan: body.currentLessonPlan || course.lessonPlan || null,
+            messages: body.messages || []
+          }, {
+            onDelta: (text) => sendSse(res, 'delta', { text }),
+            onMeta: (meta) => sendSse(res, 'meta', { meta }),
+            onObjectives: (objectives) => sendSse(res, 'objectives', { objectives }),
+            onMaterials: (materials) => sendSse(res, 'materials', { materials }),
+            onFocus: (payload) => sendSse(res, 'focus', payload),
+            onSection: (section) => sendSse(res, 'section', { section }),
+            onClosing: (closing) => sendSse(res, 'closing', { closing }),
+            onLessonPlan: (lessonPlan) => {
+              generatedLessonPlan = lessonPlan;
+              sendSse(res, 'lessonPlan', { lessonPlan });
+            },
+            onDone: (meta) => {
+              doneMeta = meta || {};
+            }
+          });
+          let savedCourse = null;
+          if (generatedLessonPlan) {
+            savedCourse = await courseService.updateCourse(courseId, {
+              lessonPlan: generatedLessonPlan,
+              progress: Math.max(Number(course.progress || 0), 78)
+            });
+          }
+          sendSse(res, 'done', { ...doneMeta, course: savedCourse });
+        } catch (error) {
+          sendSse(res, 'error', {
+            code: error.code || 'AI_STREAM_ERROR',
+            message: error.message || 'AI lesson plan stream failed'
+          });
+        } finally {
+          res.end();
+        }
         return;
       }
 

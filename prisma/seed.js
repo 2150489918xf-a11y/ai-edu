@@ -1,6 +1,8 @@
 import { loadEnvFile } from '../server/env.js';
 import {
   generatedPaper,
+  knowledgeBaseCategories,
+  knowledgeMaterials,
   newtonClassLearningAnalysis,
   newtonStudentProfiles
 } from '../src/data/teachingMockData.js';
@@ -17,6 +19,18 @@ const classIdByName = {
 
 const courseId = 'course-newton-2';
 const sessionId = 'session-newton-001';
+
+function isKnowledgeMaterialSeed(value) {
+  return Boolean(
+    value &&
+    value.id &&
+    value.categoryId &&
+    value.title &&
+    value.type &&
+    value.subject &&
+    value.grade
+  );
+}
 
 function avgTimeToSeconds(value) {
   const match = String(value || '').match(/\d+/);
@@ -36,6 +50,8 @@ function normalizeWeakPoint(point) {
 
 async function seed() {
   await prisma.studentAnswer.deleteMany();
+  await prisma.knowledgeMaterial.deleteMany();
+  await prisma.knowledgeCategory.deleteMany();
   await prisma.parentSummary.deleteMany();
   await prisma.learningProfile.deleteMany();
   await prisma.questionKnowledgePoint.deleteMany();
@@ -46,6 +62,48 @@ async function seed() {
   await prisma.student.deleteMany();
   await prisma.class.deleteMany();
   await prisma.course.deleteMany();
+
+  for (const [index, category] of knowledgeBaseCategories.filter((item) => item.id !== 'all').entries()) {
+    await prisma.knowledgeCategory.create({
+      data: {
+        id: category.id,
+        name: category.name,
+        icon: category.icon || 'folder_open',
+        sortOrder: index
+      }
+    });
+  }
+
+  const seedMaterials = knowledgeMaterials.filter(isKnowledgeMaterialSeed);
+  const seededCategoryIds = new Set(knowledgeBaseCategories.map((category) => category.id));
+
+  for (const material of seedMaterials.filter((item) => seededCategoryIds.has(item.categoryId))) {
+    await prisma.knowledgeMaterial.create({
+      data: {
+        id: material.id,
+        categoryId: material.categoryId,
+        title: material.title,
+        type: material.type,
+        subject: material.subject,
+        grade: material.grade,
+        size: material.size,
+        pages: material.pages || 0,
+        parseStatus: material.status || 'parsed',
+        source: material.source || '手动添加',
+        chunks: material.chunks || 0,
+        evidenceCount: material.evidenceCount || 0,
+        vectorIndexed: Boolean(material.vectorIndexed),
+        bm25Indexed: Boolean(material.bm25Indexed),
+        teacherPinned: Boolean(material.teacherPinned),
+        tags: material.tags || [],
+        knowledgePoints: material.knowledgePoints || [],
+        retrievalSummary: material.retrievalSummary || null,
+        evidenceTypes: material.evidenceTypes || [],
+        availableActions: material.availableActions || [],
+        usedByCourses: material.usedByCourses || []
+      }
+    });
+  }
 
   await prisma.course.create({
     data: {
@@ -83,12 +141,12 @@ async function seed() {
   await prisma.questionBank.create({
     data: {
       id: 'newton-laws-bank',
-      title: '\u725b\u987f\u5b9a\u5f8b\u8bfe\u5802\u9898\u5e93',
-      subject: '\u7269\u7406',
-      grade: '\u9ad8\u4e00',
-      usage: '\u8bfe\u524d / \u8bfe\u4e2d / \u8bfe\u540e',
-      description: '\u8986\u76d6\u725b\u987f\u7b2c\u4e8c\u5b9a\u5f8b\u3001\u53d7\u529b\u5206\u6790\u3001\u5408\u529b\u4e0e\u52a0\u901f\u5ea6\u65b9\u5411\u3001\u57fa\u7840\u8ba1\u7b97\u3002',
-      tags: ['\u725b\u987f\u7b2c\u4e8c\u5b9a\u5f8b', '\u53d7\u529b\u5206\u6790', '\u8bfe\u5802\u68c0\u6d4b']
+      title: '牛顿定律课堂题库',
+      subject: '物理',
+      grade: '高一',
+      usage: '课前 / 课中 / 课后',
+      description: '覆盖牛顿第二定律、受力分析、合力与加速度方向、基础计算。',
+      tags: ['牛顿第二定律', '受力分析', '课堂检测']
     }
   });
 
@@ -168,7 +226,7 @@ async function seed() {
         id: question.id,
         bankId: 'newton-laws-bank',
         courseId,
-        stage: question.type === 'calculation' ? '\u8bfe\u540e' : '\u8bfe\u4e2d',
+        stage: question.type === 'calculation' ? '课后' : '课中',
         type: question.type,
         difficulty: question.difficulty,
         title: question.title,
