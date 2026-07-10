@@ -16,6 +16,7 @@ const router = useRouter();
 const courseId = computed(() => String(route.params.courseId || 'math-quadratic'));
 const courseDetail = ref(null);
 const course = computed(() => courseDetail.value || getMockCourse(courseId.value));
+const courseDisplayTitle = computed(() => course.value?.title || course.value?.shortTitle || '当前课程');
 
 const generating = ref(false);
 const generated = ref(false);
@@ -269,7 +270,7 @@ async function persistCurrentMindMap(nextMindMap) {
     });
     courseDetail.value = savedCourse;
   } catch (error) {
-    agentError.value = error instanceof Error ? error.message : '鎬濈淮瀵煎浘淇濆瓨澶辫触';
+    agentError.value = error instanceof Error ? error.message : '思维导图保存失败';
   }
 }
 
@@ -653,20 +654,20 @@ onUnmounted(() => {
     <header class="mind-top">
       <button class="mind-btn back-btn" type="button" @click="goBack">
         <span class="material-symbols-outlined">chevron_left</span>
-        杩斿洖澶囪
+        返回备课
       </button>
       <div class="mind-title">
-        <h1>{{ course.shortTitle }} 路 鎬濈淮瀵煎浘</h1>
+        <h1>{{ courseDisplayTitle }} · 思维导图</h1>
         <p>{{ generated ? '已基于知识库资料生成，可继续用于 PPT、题目和讲解脚本。' : '从已引用资料中提取知识点、关系和薄弱点，生成可演示的备课思维导图。' }}</p>
       </div>
       <div class="mind-actions">
         <button class="mind-btn" type="button" :disabled="!generated || generating" @click="startGeneration">
           <span class="material-symbols-outlined">refresh</span>
-          閲嶆柊鐢熸垚
+          重新生成
         </button>
         <button class="mind-primary" type="button" :disabled="!generated" @click="router.push(`/preclass/courses/${course.id}/ppt`)">
           <span class="material-symbols-outlined">desktop_windows</span>
-          鐢熸垚 PPT
+          生成 PPT
         </button>
       </div>
     </header>
@@ -675,11 +676,11 @@ onUnmounted(() => {
       <nav class="mind-rail" aria-label="课程工作台步骤">
         <button class="mind-step" type="button" @click="router.push(`/preclass/courses/${course.id}/workspace`)">
           <span class="material-symbols-outlined">auto_awesome</span>
-          鐢熸垚
+          生成
         </button>
         <button class="mind-step active" type="button">
           <span class="material-symbols-outlined">account_tree</span>
-          瀵煎浘
+          导图
         </button>
         <button class="mind-step" type="button" @click="router.push(`/preclass/courses/${course.id}/ppt`)">
           <span class="material-symbols-outlined">desktop_windows</span>
@@ -687,11 +688,11 @@ onUnmounted(() => {
         </button>
         <button class="mind-step" type="button" @click="router.push(`/preclass/courses/${course.id}/lesson-plan`)">
           <span class="material-symbols-outlined">article</span>
-          鏁欐
+          教案
         </button>
         <button class="mind-step" type="button" @click="router.push(`/preclass/courses/${course.id}/analysis`)">
           <span class="material-symbols-outlined">analytics</span>
-          棰樻瀽
+          题析
         </button>
         <div class="mind-ai-mark">AI</div>
       </nav>
@@ -703,10 +704,10 @@ onUnmounted(() => {
         </header>
                 <button class="mind-btn material-pick-btn" type="button" @click="materialSelectorOpen = !materialSelectorOpen">
           <span class="material-symbols-outlined">library_add_check</span>
-          閫夋嫨璧勬枡
+          选择资料
         </button>
         <section v-if="materialSelectorOpen" class="material-selector">
-          <p v-if="materialLoading" class="material-selector-note">璧勬枡鍔犺浇涓?..</p>
+          <p v-if="materialLoading" class="material-selector-note">资料加载中...</p>
           <p v-else-if="materialError" class="material-selector-error">{{ materialError }}</p>
           <div v-else class="material-option-list">
             <button
@@ -725,15 +726,15 @@ onUnmounted(() => {
             </button>
           </div>
           <footer>
-            <button class="mind-btn" type="button" @click="materialSelectorOpen = false">鍙栨秷</button>
-            <button class="mind-primary" type="button" :disabled="materialLoading" @click="saveReferencedMaterials">淇濆瓨寮曠敤</button>
+            <button class="mind-btn" type="button" @click="materialSelectorOpen = false">取消</button>
+            <button class="mind-primary" type="button" :disabled="materialLoading" @click="saveReferencedMaterials">保存引用</button>
           </footer>
         </section>
         <div class="mind-source-list">
           <article v-for="source in sources" :key="source.id" class="mind-source">
             <div>
               <strong>{{ source.title }}</strong>
-              <span>{{ source.type }} 路 {{ source.status }}</span>
+              <span>{{ source.type }} · {{ source.status }}</span>
             </div>
             <em>{{ source.evidence }}</em>
           </article>
@@ -790,16 +791,16 @@ onUnmounted(() => {
               <span class="material-symbols-outlined">hub</span>
               AI MindMap
             </span>
-            <h2>{{ mindMap?.title || '绛夊緟鐢熸垚鎬濈淮瀵煎浘' }}</h2>
+            <h2>{{ mindMap?.title || '等待生成思维导图' }}</h2>
           </div>
           <div class="mind-canvas-tools">
             <button class="mind-btn mind-edit-toggle" type="button" :disabled="!generated || generating" @click="openMindMapEditor">
               <span class="material-symbols-outlined">edit_note</span>
-              缂栬緫瀵煎浘
+              编辑导图
             </button>
             <button class="mind-generate" type="button" :disabled="generating" @click="startGeneration">
               <span class="material-symbols-outlined" :class="{ spinning: generating }">{{ generating ? 'progress_activity' : 'auto_awesome' }}</span>
-              {{ generating ? '姝ｅ湪鐢熸垚...' : generated ? '閲嶆柊鐢熸垚瀵煎浘' : 'AI 鐢熸垚鎬濈淮瀵煎浘' }}
+              {{ generating ? '正在生成...' : generated ? '重新生成导图' : 'AI 生成思维导图' }}
             </button>
           </div>
         </div>
@@ -816,16 +817,16 @@ onUnmounted(() => {
               <header>
                 <span class="small-chip">
                   <span class="material-symbols-outlined">edit_note</span>
-                  鎵嬪姩缂栬緫
+                  手动编辑
                 </span>
-                <button class="mind-icon-btn" type="button" aria-label="鍏抽棴缂栬緫" @click="cancelMindMapEdit">
+                <button class="mind-icon-btn" type="button" aria-label="关闭编辑" @click="cancelMindMapEdit">
                   <span class="material-symbols-outlined">close</span>
                 </button>
               </header>
-              <textarea v-model="editableMarkdown" spellcheck="false" aria-label="鎬濈淮瀵煎浘 Markdown 澶х翰"></textarea>
+              <textarea v-model="editableMarkdown" spellcheck="false" aria-label="思维导图 Markdown 大纲"></textarea>
               <footer>
-                <button class="mind-btn" type="button" @click="cancelMindMapEdit">鍙栨秷</button>
-                <button class="mind-primary" type="button" @click="applyMindMapEdit">搴旂敤淇敼</button>
+                <button class="mind-btn" type="button" @click="cancelMindMapEdit">取消</button>
+                <button class="mind-primary" type="button" @click="applyMindMapEdit">应用修改</button>
               </footer>
             </aside>
           </template>
@@ -842,7 +843,7 @@ onUnmounted(() => {
           <header>
             <span class="small-chip">
               <span class="material-symbols-outlined">smart_toy</span>
-              AI 瀵煎浘鏅鸿兘浣?
+              AI 导图智能体
             </span>
             <em>{{ agentSending ? '生成中' : 'DeepSeek' }}</em>
           </header>
