@@ -4,8 +4,10 @@ import { createServer } from 'node:http';
 import {
   archiveCourse,
   createCourse,
+  createCourseGroup,
   generateCourseMindMap,
   getCourse,
+  listCourseGroups,
   listCourses,
   restoreCourse,
   updateCourse
@@ -54,6 +56,22 @@ function listen() {
       assert.equal(body.goal, 'Understand when momentum is conserved.');
       assert.deepEqual(body.knowledge, ['momentum', 'impulse']);
       sendJson(res, 201, { data: { id: 'course-momentum', ...body, status: 'active' } });
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/v1/course-groups') {
+      assert.equal(url.searchParams.get('status'), 'active');
+      sendJson(res, 200, {
+        data: [{ id: 'group-physics-grade1', title: 'Grade 10 Physics', subject: 'Physics', grade: 'Grade 10' }]
+      });
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/v1/course-groups') {
+      const body = await readJsonBody(req);
+      assert.equal(body.title, 'Grade 11 Physics');
+      assert.equal(body.subject, 'Physics');
+      sendJson(res, 201, { data: { id: 'group-physics-grade11', ...body, status: 'active' } });
       return;
     }
 
@@ -150,6 +168,16 @@ try {
   });
   assert.equal(created.id, 'course-momentum');
 
+  const groups = await listCourseGroups({ status: 'active' });
+  assert.equal(groups[0].id, 'group-physics-grade1');
+
+  const createdGroup = await createCourseGroup({
+    title: 'Grade 11 Physics',
+    subject: 'Physics',
+    grade: 'Grade 11'
+  });
+  assert.equal(createdGroup.id, 'group-physics-grade11');
+
   const detail = await getCourse('course-newton-2');
   assert.equal(detail.title, 'Newton Second Law');
 
@@ -190,6 +218,8 @@ try {
     [
       'GET /api/v1/courses',
       'POST /api/v1/courses',
+      'GET /api/v1/course-groups',
+      'POST /api/v1/course-groups',
       'GET /api/v1/courses/course-newton-2',
       'PATCH /api/v1/courses/course-newton-2',
       'POST /api/v1/courses/course-newton-2/mindmap/generate',

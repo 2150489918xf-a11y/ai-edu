@@ -44,6 +44,19 @@ export async function listCourses(filters = {}) {
   };
 }
 
+export async function listCourseGroups(filters = {}) {
+  const payload = await requestJson(`/course-groups${buildQuery(filters)}`);
+  return payload.data || [];
+}
+
+export async function createCourseGroup(group) {
+  const payload = await requestJson('/course-groups', {
+    method: 'POST',
+    body: JSON.stringify(group)
+  });
+  return payload.data;
+}
+
 export async function createCourse(course) {
   const payload = await requestJson('/courses', {
     method: 'POST',

@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { notify, store } from '../data/mockStore';
-import { archiveCourse, createCourse, listCourses, restoreCourse } from '../data/courseApiClient';
+import { archiveCourse, createCourse, createCourseGroup, listCourseGroups, listCourses, restoreCourse } from '../data/courseApiClient';
 import { mapApiCoursesToUiCourses } from '../data/courseUiAdapter';
 
 const router = useRouter();
@@ -10,9 +10,11 @@ const activeTab = ref('进行中');
 const keyword = ref('');
 const loading = ref(false);
 const courses = ref([]);
+const groupOptions = ref([]);
 const selectedGroupId = ref('all');
 const selectedCourseId = ref('');
 const showCreateDialog = ref(false);
+const showCreateGroupDialog = ref(false);
 const createForm = ref({
   groupId: '',
   title: '',
@@ -21,6 +23,12 @@ const createForm = ref({
   duration: '45 分钟',
   goal: '',
   knowledgeText: '',
+  description: ''
+});
+const groupForm = ref({
+  title: '',
+  subject: '物理',
+  grade: '高一',
   description: ''
 });
 
@@ -38,6 +46,15 @@ function getCourseGroupId(course) {
 
 const courseGroups = computed(() => {
   const groupMap = new Map();
+  for (const group of groupOptions.value) {
+    groupMap.set(group.id, {
+      id: group.id,
+      title: group.title,
+      subject: group.subject,
+      grade: group.grade,
+      count: 0
+    });
+  }
   for (const course of courses.value) {
     const id = getCourseGroupId(course);
     if (!groupMap.has(id)) {
@@ -106,12 +123,16 @@ function continueDesign() {
 async function loadCourses() {
   loading.value = true;
   try {
-    const result = await listCourses({
+    const [groups, result] = await Promise.all([
+      listCourseGroups({ status: 'active' }),
+      listCourses({
       keyword: keyword.value.trim(),
       status: apiStatus.value,
       page: 1,
       pageSize: 50
-    });
+      })
+    ]);
+    groupOptions.value = groups;
     courses.value = mapApiCoursesToUiCourses(result.data);
     if (selectedGroupId.value !== 'all' && !courseGroups.value.some((group) => group.id === selectedGroupId.value)) {
       selectedGroupId.value = 'all';
@@ -129,6 +150,16 @@ async function loadCourses() {
   }
 }
 
+function openCreateGroupDialog() {
+  groupForm.value = {
+    title: '',
+    subject: '物理',
+    grade: '高一',
+    description: ''
+  };
+  showCreateGroupDialog.value = true;
+}
+
 function openCreateDialog() {
   const group = selectedGroupId.value === 'all' ? courseGroups.value[0] : courseGroups.value.find((item) => item.id === selectedGroupId.value);
   createForm.value = {
@@ -142,6 +173,28 @@ function openCreateDialog() {
     description: ''
   };
   showCreateDialog.value = true;
+}
+
+async function submitNewGroup() {
+  const title = groupForm.value.title.trim();
+  if (!title) {
+    notify('请先填写课程分组名称');
+    return;
+  }
+  try {
+    const created = await createCourseGroup({
+      title,
+      subject: groupForm.value.subject.trim(),
+      grade: groupForm.value.grade.trim(),
+      description: groupForm.value.description.trim()
+    });
+    showCreateGroupDialog.value = false;
+    await loadCourses();
+    selectGroup(created.id);
+    notify('课程分组已创建，可以继续新建备课单元');
+  } catch (error) {
+    notify(error.message || '课程分组创建失败');
+  }
 }
 
 function parseKnowledge(text) {
@@ -204,10 +257,16 @@ onMounted(loadCourses);
   <main class="course-page">
     <section class="course-head">
       <h1>我的备课</h1>
-      <button class="new-course-btn" type="button" :disabled="loading" @click="openCreateDialog">
-        <span class="material-symbols-outlined">add</span>
-        新建备课单元
-      </button>
+      <div class="course-head-actions">
+        <button class="new-group-btn" type="button" :disabled="loading" @click="openCreateGroupDialog">
+          <span class="material-symbols-outlined">create_new_folder</span>
+          新建课程分组
+        </button>
+        <button class="new-course-btn" type="button" :disabled="loading" @click="openCreateDialog">
+          <span class="material-symbols-outlined">add</span>
+          新建备课单元
+        </button>
+      </div>
     </section>
 
     <section class="course-tools" aria-label="课程筛选">
@@ -321,6 +380,47 @@ onMounted(loadCourses);
           </div>
         </section>
       </aside>
+    </section>
+
+    <section v-if="showCreateGroupDialog" class="course-dialog-backdrop" role="presentation" @click.self="showCreateGroupDialog = false">
+      <form class="course-dialog group-dialog" @submit.prevent="submitNewGroup">
+        <header>
+          <div>
+            <h2>新建课程分组</h2>
+            <p>课程分组是学生端看到的真实课程，例如“高一物理”“高一英语”。创建后可以在其下继续添加备课单元。</p>
+          </div>
+          <button class="dialog-icon-btn" type="button" aria-label="关闭" @click="showCreateGroupDialog = false">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </header>
+
+        <div class="course-form-grid">
+          <label class="course-field wide">
+            <span>课程分组名称</span>
+            <input v-model="groupForm.title" type="text" placeholder="例如：高一物理" />
+          </label>
+          <label class="course-field">
+            <span>年级</span>
+            <input v-model="groupForm.grade" type="text" placeholder="高一" />
+          </label>
+          <label class="course-field">
+            <span>学科</span>
+            <input v-model="groupForm.subject" type="text" placeholder="物理" />
+          </label>
+          <label class="course-field wide">
+            <span>课程说明</span>
+            <textarea v-model="groupForm.description" rows="3" placeholder="可选，用于说明这门真实课程的范围"></textarea>
+          </label>
+        </div>
+
+        <footer>
+          <button class="soft-btn" type="button" @click="showCreateGroupDialog = false">取消</button>
+          <button class="primary-btn" type="submit" :disabled="loading">
+            创建分组
+            <span class="material-symbols-outlined">arrow_forward</span>
+          </button>
+        </footer>
+      </form>
     </section>
 
     <section v-if="showCreateDialog" class="course-dialog-backdrop" role="presentation" @click.self="showCreateDialog = false">

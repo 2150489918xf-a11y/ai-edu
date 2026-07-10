@@ -7,11 +7,13 @@ const courseServiceSource = readFileSync(new URL('../server/services/courseServi
 
 assert.ok(coursesSource.includes('我的备课'), 'teacher course page should use preparation wording');
 assert.ok(coursesSource.includes('新建备课单元'), 'teacher course page should create course units, not real courses');
+assert.ok(coursesSource.includes('新建课程分组') && coursesSource.includes('showCreateGroupDialog'), 'teacher course page should support manually creating course groups');
 assert.ok(coursesSource.includes('courseGroups') && coursesSource.includes('groupedCourses'), 'teacher course page should group units by real course');
 assert.ok(coursesSource.includes('selectedGroupId') && coursesSource.includes('course-group-filter'), 'teacher course page should filter units by course group');
 assert.ok(coursesSource.includes('所属课程') && coursesSource.includes('createForm.groupId'), 'create dialog should allow selecting a parent course');
 assert.ok(coursesSource.includes('备课单元名称'), 'create dialog should name the unit field clearly');
 assert.ok(adapterSource.includes('groupTitle') && adapterSource.includes('groupId'), 'course UI adapter should expose group metadata');
 assert.ok(courseServiceSource.includes('resolveCourseGroupId') && courseServiceSource.includes('include:') && courseServiceSource.includes('group:'), 'course service should return and resolve course group metadata');
+assert.ok(courseServiceSource.includes('createCourseGroup') && courseServiceSource.includes('listCourseGroups'), 'course service should support course group creation and listing');
 
 console.log('teacher course units page contracts passed');

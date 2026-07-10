@@ -365,6 +365,22 @@ export function createLearningApiApp({
         return;
       }
 
+      if (courseService && req.method === 'GET' && path === '/api/v1/course-groups') {
+        const data = await courseService.listCourseGroups({
+          keyword: url.searchParams.get('keyword') || undefined,
+          status: url.searchParams.get('status') || undefined
+        });
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      if (courseService && req.method === 'POST' && path === '/api/v1/course-groups') {
+        const body = await readJsonBody(req);
+        const data = await courseService.createCourseGroup(body);
+        sendJson(res, 201, { data });
+        return;
+      }
+
       if (knowledgeService && req.method === 'GET' && path === '/api/v1/knowledge-categories') {
         const { page, pageSize } = getPageParams(url.searchParams);
         const result = await knowledgeService.listCategories({

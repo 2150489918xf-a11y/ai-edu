@@ -41,6 +41,23 @@ function normalizeCourse(course) {
   };
 }
 
+function normalizeCourseGroup(group) {
+  return {
+    id: group.id,
+    title: group.title,
+    subject: group.subject,
+    grade: group.grade,
+    teacherId: group.teacherId || null,
+    teacher: group.teacher?.name || '',
+    description: group.description || '',
+    status: group.status,
+    unitCount: group._count?.units ?? group.units?.length ?? 0,
+    deletedAt: group.deletedAt ? group.deletedAt.toISOString() : null,
+    createdAt: group.createdAt?.toISOString?.() || group.createdAt,
+    updatedAt: group.updatedAt?.toISOString?.() || group.updatedAt
+  };
+}
+
 function normalizeText(value) {
   return typeof value === 'string' ? value.trim() : value;
 }
@@ -49,6 +66,13 @@ function validateRequiredCourseFields(payload = {}) {
   const missing = ['title', 'subject', 'grade'].filter((key) => !normalizeText(payload[key]));
   if (missing.length) {
     throw createHttpError(400, 'BAD_REQUEST', '缺少课程必要字段', { missing });
+  }
+}
+
+function validateRequiredCourseGroupFields(payload = {}) {
+  const missing = ['title', 'subject', 'grade'].filter((key) => !normalizeText(payload[key]));
+  if (missing.length) {
+    throw createHttpError(400, 'BAD_REQUEST', '缺少课程分组必要字段', { missing });
   }
 }
 
@@ -107,6 +131,69 @@ function buildCourseWhere(filters = {}) {
 
 export function createCourseService(prisma) {
   return {
+    async listCourseGroups(filters = {}) {
+      const status = filters.status || 'active';
+      const where = {};
+      if (status !== 'all') where.status = status;
+      if (filters.keyword) {
+        where.OR = [
+          { title: { contains: filters.keyword, mode: 'insensitive' } },
+          { subject: { contains: filters.keyword, mode: 'insensitive' } },
+          { grade: { contains: filters.keyword, mode: 'insensitive' } }
+        ];
+      }
+
+      const groups = await prisma.courseGroup.findMany({
+        where,
+        include: {
+          teacher: true,
+          _count: { select: { units: true } }
+        },
+        orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }]
+      });
+
+      const normalizedGroups = groups.map(normalizeCourseGroup);
+      const uniqueGroups = new Map();
+      for (const group of normalizedGroups) {
+        const key = `${group.grade}::${group.subject}::${group.title}`;
+        const existing = uniqueGroups.get(key);
+        if (!existing) {
+          uniqueGroups.set(key, group);
+        } else {
+          existing.unitCount += group.unitCount;
+        }
+      }
+
+      return [...uniqueGroups.values()];
+    },
+
+    async createCourseGroup(payload = {}) {
+      validateRequiredCourseGroupFields(payload);
+      const title = normalizeText(payload.title);
+      const subject = normalizeText(payload.subject);
+      const grade = normalizeText(payload.grade);
+      const existing = await prisma.courseGroup.findFirst({
+        where: {
+          title,
+          subject,
+          grade,
+          deletedAt: null
+        }
+      });
+      if (existing) return normalizeCourseGroup(existing);
+
+      const group = await prisma.courseGroup.create({
+        data: {
+          title,
+          subject,
+          grade,
+          description: normalizeText(payload.description) || null,
+          ...(normalizeText(payload.teacherId) ? { teacherId: normalizeText(payload.teacherId) } : {})
+        }
+      });
+      return normalizeCourseGroup(group);
+    },
+
     async listCourses(filters = {}) {
       const page = Math.max(Number(filters.page || 1), 1);
       const pageSize = Math.min(Math.max(Number(filters.pageSize || 20), 1), 100);

@@ -35,6 +35,30 @@ function createMockCourseService() {
         deletedAt: null
       };
     },
+    async listCourseGroups(filters = {}) {
+      assert.equal(filters.status, 'active');
+      return [
+        {
+          id: 'group-physics-grade1',
+          title: '高一物理',
+          subject: '物理',
+          grade: '高一',
+          status: 'active',
+          unitCount: 3
+        }
+      ];
+    },
+    async createCourseGroup(payload = {}) {
+      assert.equal(payload.title, '高二物理');
+      return {
+        id: 'group-physics-grade2',
+        title: payload.title,
+        subject: payload.subject,
+        grade: payload.grade,
+        status: 'active',
+        unitCount: 0
+      };
+    },
     async getCourse(courseId) {
       assert.equal(courseId, 'course-newton-2');
       return {
@@ -141,6 +165,21 @@ try {
   });
   assert.equal(created.response.status, 201);
   assert.equal(created.payload.data.id, 'course-momentum');
+
+  const groups = await requestJson(baseUrl, '/api/v1/course-groups?status=active');
+  assert.equal(groups.response.status, 200);
+  assert.equal(groups.payload.data[0].id, 'group-physics-grade1');
+
+  const createdGroup = await requestJson(baseUrl, '/api/v1/course-groups', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: '高二物理',
+      subject: '物理',
+      grade: '高二'
+    })
+  });
+  assert.equal(createdGroup.response.status, 201);
+  assert.equal(createdGroup.payload.data.id, 'group-physics-grade2');
 
   const detail = await requestJson(baseUrl, '/api/v1/courses/course-newton-2');
   assert.equal(detail.response.status, 200);
