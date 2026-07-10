@@ -33,6 +33,10 @@ export function mapApiCourseToUiCourse(course) {
 
   return {
     id: course.id,
+    groupId: course.groupId || course.group?.id || '',
+    groupTitle: course.group?.title || `${course.grade || '未分级'}${course.subject || '未设置'}`,
+    groupSubject: course.group?.subject || course.subject || '未设置',
+    groupGrade: course.group?.grade || course.grade || '未分级',
     title: course.title || topic,
     shortTitle: `${course.grade || '未分级'} · ${topic}`,
     grade: course.grade || '未分级',

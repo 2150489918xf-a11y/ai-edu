@@ -9,6 +9,16 @@ function createHttpError(statusCode, code, message, details = {}) {
 function normalizeCourse(course) {
   return {
     id: course.id,
+    groupId: course.groupId || null,
+    group: course.group ? {
+      id: course.group.id,
+      title: course.group.title,
+      subject: course.group.subject,
+      grade: course.group.grade,
+      teacher: course.group.teacher?.name || ''
+    } : null,
+    unitType: course.unitType || 'lesson',
+    sortOrder: course.sortOrder || 0,
     title: course.title,
     subject: course.subject,
     grade: course.grade,
@@ -40,6 +50,37 @@ function validateRequiredCourseFields(payload = {}) {
   if (missing.length) {
     throw createHttpError(400, 'BAD_REQUEST', '缺少课程必要字段', { missing });
   }
+}
+
+async function resolveCourseGroupId(prisma, payload = {}) {
+  const explicitGroupId = normalizeText(payload.groupId);
+  if (explicitGroupId) {
+    const group = await prisma.courseGroup.findFirst({
+      where: { id: explicitGroupId, status: 'active', deletedAt: null }
+    });
+    if (!group) throw createHttpError(404, 'NOT_FOUND', '课程不存在');
+    return group.id;
+  }
+
+  const subject = normalizeText(payload.subject);
+  const grade = normalizeText(payload.grade);
+  if (!subject || !grade) return null;
+
+  const existing = await prisma.courseGroup.findFirst({
+    where: { subject, grade, status: 'active', deletedAt: null },
+    orderBy: { updatedAt: 'desc' }
+  });
+  if (existing) return existing.id;
+
+  const created = await prisma.courseGroup.create({
+    data: {
+      title: `${grade}${subject}`,
+      subject,
+      grade,
+      description: `${grade}${subject}课程`
+    }
+  });
+  return created.id;
 }
 
 function buildCourseWhere(filters = {}) {
@@ -74,6 +115,11 @@ export function createCourseService(prisma) {
       const [courses, total] = await Promise.all([
         prisma.course.findMany({
           where,
+          include: {
+            group: {
+              include: { teacher: true }
+            }
+          },
           orderBy: [{ updatedAt: 'desc' }],
           skip: (page - 1) * pageSize,
           take: pageSize
@@ -89,10 +135,12 @@ export function createCourseService(prisma) {
 
     async createCourse(payload = {}) {
       validateRequiredCourseFields(payload);
+      const groupId = await resolveCourseGroupId(prisma, payload);
 
       const course = await prisma.course.create({
         data: {
           ...(normalizeText(payload.id) ? { id: normalizeText(payload.id) } : {}),
+          ...(groupId ? { groupId } : {}),
           title: normalizeText(payload.title),
           subject: normalizeText(payload.subject),
           grade: normalizeText(payload.grade),
@@ -107,7 +155,9 @@ export function createCourseService(prisma) {
           referencedMaterials: Array.isArray(payload.referencedMaterials) ? payload.referencedMaterials : [],
           outline: payload.outline || null,
           mindmap: payload.mindmap || null,
-          lessonPlan: payload.lessonPlan || null
+          lessonPlan: payload.lessonPlan || null,
+          unitType: normalizeText(payload.unitType) || 'lesson',
+          sortOrder: Number.isFinite(Number(payload.sortOrder)) ? Number(payload.sortOrder) : 0
         }
       });
 
@@ -115,7 +165,14 @@ export function createCourseService(prisma) {
     },
 
     async getCourse(courseId) {
-      const course = await prisma.course.findUnique({ where: { id: courseId } });
+      const course = await prisma.course.findUnique({
+        where: { id: courseId },
+        include: {
+          group: {
+            include: { teacher: true }
+          }
+        }
+      });
       if (!course) {
         throw createHttpError(404, 'NOT_FOUND', '课程不存在');
       }
@@ -141,6 +198,9 @@ export function createCourseService(prisma) {
       if ('outline' in payload) data.outline = payload.outline || null;
       if ('mindmap' in payload) data.mindmap = payload.mindmap || null;
       if ('lessonPlan' in payload) data.lessonPlan = payload.lessonPlan || null;
+      if ('unitType' in payload) data.unitType = normalizeText(payload.unitType) || 'lesson';
+      if ('sortOrder' in payload) data.sortOrder = Number.isFinite(Number(payload.sortOrder)) ? Number(payload.sortOrder) : 0;
+      if ('groupId' in payload) data.groupId = await resolveCourseGroupId(prisma, payload);
 
       if ('title' in data && !data.title) {
         throw createHttpError(400, 'BAD_REQUEST', '课程名称不能为空');

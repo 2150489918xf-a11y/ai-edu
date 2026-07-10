@@ -1062,6 +1062,49 @@ h1 {
   font-weight: 500;
 }
 
+.course-group-filter {
+  display: flex;
+  width: min(1510px, calc(100vw - 260px));
+  gap: 10px;
+  margin-top: 14px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.course-group-filter button {
+  display: inline-flex;
+  height: 38px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .72);
+  color: var(--muted);
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.course-group-filter button.active {
+  border-color: rgba(47, 172, 102, .44);
+  background: var(--deep);
+  color: white;
+}
+
+.course-group-filter button span {
+  display: inline-flex;
+  min-width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(16, 55, 35, .08);
+  color: inherit;
+  padding: 0 7px;
+  font-family: var(--font-number);
+}
+
 .course-layout {
   display: grid;
   grid-template-columns: 800px minmax(0, 1fr);
@@ -1101,7 +1144,31 @@ h1 {
 .course-items {
   display: grid;
   gap: 14px;
+  max-height: calc(483px - 58px);
+  overflow-y: auto;
   padding: 18px 20px;
+}
+
+.course-unit-group {
+  display: grid;
+  gap: 10px;
+}
+
+.course-unit-group > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 2px 0;
+}
+
+.course-unit-group > header strong {
+  font-size: 14px;
+}
+
+.course-unit-group > header span {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .course-empty {
@@ -1216,6 +1283,7 @@ h1 {
 }
 
 .course-field input,
+.course-field select,
 .course-field textarea {
   width: 100%;
   min-height: 44px;
@@ -1226,6 +1294,10 @@ h1 {
   padding: 11px 12px;
   font: inherit;
   resize: vertical;
+}
+
+.course-field select {
+  appearance: none;
 }
 
 .course-dialog footer {

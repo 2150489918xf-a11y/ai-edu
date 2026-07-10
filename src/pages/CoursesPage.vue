@@ -10,9 +10,11 @@ const activeTab = ref('进行中');
 const keyword = ref('');
 const loading = ref(false);
 const courses = ref([]);
+const selectedGroupId = ref('all');
 const selectedCourseId = ref('');
 const showCreateDialog = ref(false);
 const createForm = ref({
+  groupId: '',
   title: '',
   subject: '物理',
   grade: '高一',
@@ -30,13 +32,70 @@ const apiStatus = computed(() => {
   return 'active';
 });
 
-const selectedCourse = computed(() => {
-  return courses.value.find((course) => course.id === selectedCourseId.value) || courses.value[0] || null;
+function getCourseGroupId(course) {
+  return course.groupId || `${course.groupGrade}-${course.groupSubject}`;
+}
+
+const courseGroups = computed(() => {
+  const groupMap = new Map();
+  for (const course of courses.value) {
+    const id = getCourseGroupId(course);
+    if (!groupMap.has(id)) {
+      groupMap.set(id, {
+        id,
+        title: course.groupTitle,
+        subject: course.groupSubject,
+        grade: course.groupGrade,
+        count: 0
+      });
+    }
+    groupMap.get(id).count += 1;
+  }
+  return [...groupMap.values()].sort((a, b) => a.title.localeCompare(b.title, 'zh-Hans-CN'));
 });
+
+const visibleCourses = computed(() => {
+  if (selectedGroupId.value === 'all') return courses.value;
+  return courses.value.filter((course) => getCourseGroupId(course) === selectedGroupId.value);
+});
+
+const groupedCourses = computed(() => {
+  const groupMap = new Map();
+  for (const course of visibleCourses.value) {
+    const id = getCourseGroupId(course);
+    if (!groupMap.has(id)) {
+      groupMap.set(id, {
+        id,
+        title: course.groupTitle,
+        meta: `${course.groupGrade} · ${course.groupSubject}`,
+        courses: []
+      });
+    }
+    groupMap.get(id).courses.push(course);
+  }
+  return [...groupMap.values()].sort((a, b) => a.title.localeCompare(b.title, 'zh-Hans-CN'));
+});
+
+const selectedCourse = computed(() => visibleCourses.value.find((course) => course.id === selectedCourseId.value) || visibleCourses.value[0] || null);
+const hasSelectedCourseInVisibleList = computed(() => visibleCourses.value.some((course) => course.id === selectedCourseId.value));
+
+const selectedCreateGroup = computed(() => courseGroups.value.find((group) => group.id === createForm.value.groupId) || null);
 
 function selectCourse(courseId) {
   selectedCourseId.value = courseId;
   store.selectedCourseId = courseId;
+}
+
+function selectGroup(groupId) {
+  selectedGroupId.value = groupId;
+  const firstCourse = visibleCourses.value[0];
+  selectCourse(firstCourse?.id || '');
+}
+
+function syncCreateGroupFields() {
+  if (!selectedCreateGroup.value) return;
+  createForm.value.grade = selectedCreateGroup.value.grade;
+  createForm.value.subject = selectedCreateGroup.value.subject;
 }
 
 function continueDesign() {
@@ -54,11 +113,14 @@ async function loadCourses() {
       pageSize: 50
     });
     courses.value = mapApiCoursesToUiCourses(result.data);
-    if (!selectedCourse.value && courses.value.length) {
-      selectCourse(courses.value[0].id);
+    if (selectedGroupId.value !== 'all' && !courseGroups.value.some((group) => group.id === selectedGroupId.value)) {
+      selectedGroupId.value = 'all';
     }
-    if (selectedCourse.value && !courses.value.some((course) => course.id === selectedCourse.value.id)) {
-      selectCourse(courses.value[0]?.id || '');
+    if (!selectedCourseId.value && visibleCourses.value.length) {
+      selectCourse(visibleCourses.value[0].id);
+    }
+    if (selectedCourseId.value && !hasSelectedCourseInVisibleList.value) {
+      selectCourse(visibleCourses.value[0]?.id || '');
     }
   } catch (error) {
     notify(error.message || '课程列表加载失败');
@@ -68,10 +130,12 @@ async function loadCourses() {
 }
 
 function openCreateDialog() {
+  const group = selectedGroupId.value === 'all' ? courseGroups.value[0] : courseGroups.value.find((item) => item.id === selectedGroupId.value);
   createForm.value = {
+    groupId: group?.id || '',
     title: '',
-    subject: '物理',
-    grade: '高一',
+    subject: group?.subject || '物理',
+    grade: group?.grade || '高一',
     duration: '45 分钟',
     goal: '',
     knowledgeText: '',
@@ -90,13 +154,14 @@ function parseKnowledge(text) {
 async function submitNewCourse() {
   const title = createForm.value.title.trim();
   if (!title) {
-    notify('请先填写课程名称');
+    notify('请先填写备课单元名称');
     return;
   }
 
   try {
     const created = await createCourse({
       title,
+      groupId: createForm.value.groupId,
       subject: createForm.value.subject.trim(),
       grade: createForm.value.grade.trim(),
       duration: createForm.value.duration.trim(),
@@ -108,10 +173,10 @@ async function submitNewCourse() {
     activeTab.value = '进行中';
     await loadCourses();
     selectCourse(created.id);
-    notify('课程基础信息已保存，进入课件生成详情');
+    notify('备课单元已保存，进入课件生成详情');
     router.push(`/preclass/courses/${created.id}/workspace`);
   } catch (error) {
-    notify(error.message || '课程创建失败');
+    notify(error.message || '备课单元创建失败');
   }
 }
 
@@ -138,10 +203,10 @@ onMounted(loadCourses);
 <template>
   <main class="course-page">
     <section class="course-head">
-      <h1>我的课程</h1>
+      <h1>我的备课</h1>
       <button class="new-course-btn" type="button" :disabled="loading" @click="openCreateDialog">
         <span class="material-symbols-outlined">add</span>
-        新建课程
+        新建备课单元
       </button>
     </section>
 
@@ -159,7 +224,7 @@ onMounted(loadCourses);
       </div>
       <label class="course-search">
         <span class="material-symbols-outlined">search</span>
-        <input v-model="keyword" type="search" placeholder="搜索课程、年级、学科..." @keyup.enter="loadCourses" />
+        <input v-model="keyword" type="search" placeholder="搜索单元、年级、学科..." @keyup.enter="loadCourses" />
       </label>
       <button class="course-filter" type="button" :disabled="loading" @click="loadCourses">
         {{ loading ? '加载中' : '刷新' }}
@@ -167,36 +232,63 @@ onMounted(loadCourses);
       </button>
     </section>
 
+    <section v-if="courseGroups.length" class="course-group-filter" aria-label="课程分组">
+      <button
+        type="button"
+        :class="{ active: selectedGroupId === 'all' }"
+        @click="selectGroup('all')"
+      >
+        全部课程
+        <span>{{ courses.length }}</span>
+      </button>
+      <button
+        v-for="group in courseGroups"
+        :key="group.id"
+        type="button"
+        :class="{ active: selectedGroupId === group.id }"
+        @click="selectGroup(group.id)"
+      >
+        {{ group.title }}
+        <span>{{ group.count }}</span>
+      </button>
+    </section>
+
     <section class="course-layout">
       <section class="course-list-card">
         <header class="course-list-head">
-          <span>课程列表</span>
-          <span class="course-count">{{ courses.length }} 门</span>
+          <span>备课单元</span>
+          <span class="course-count">{{ visibleCourses.length }} 个</span>
         </header>
-        <div v-if="courses.length" class="course-items">
-          <button
-            v-for="course in courses"
-            :key="course.id"
-            class="course-row"
-            :class="{ selected: selectedCourse && course.id === selectedCourse.id }"
-            type="button"
-            @click="selectCourse(course.id)"
-          >
-            <span class="course-icon"><span class="material-symbols-outlined">{{ course.icon }}</span></span>
-            <span class="course-main">
-              <strong>{{ course.shortTitle }}</strong>
-              <p>{{ course.summary }}</p>
-              <span class="course-tags">
-                <span v-for="tag in course.tags" :key="tag">{{ tag }}</span>
+        <div v-if="visibleCourses.length" class="course-items">
+          <section v-for="group in groupedCourses" :key="group.id" class="course-unit-group">
+            <header>
+              <strong>{{ group.title }}</strong>
+              <span>{{ group.meta }} · {{ group.courses.length }} 个单元</span>
+            </header>
+            <button
+              v-for="course in group.courses"
+              :key="course.id"
+              class="course-row"
+              :class="{ selected: selectedCourse && course.id === selectedCourse.id }"
+              type="button"
+              @click="selectCourse(course.id)"
+            >
+              <span class="course-icon"><span class="material-symbols-outlined">{{ course.icon }}</span></span>
+              <span class="course-main">
+                <strong>{{ course.title }}</strong>
+                <p>{{ course.summary }}</p>
+                <span class="course-tags">
+                  <span v-for="tag in course.tags" :key="tag">{{ tag }}</span>
+                </span>
               </span>
-            </span>
-            <span class="course-status" :class="{ warn: course.statusTone === 'warn' }">{{ course.status }}</span>
-          </button>
+              <span class="course-status" :class="{ warn: course.statusTone === 'warn' }">{{ course.status }}</span>
+            </button>
+          </section>
         </div>
         <div v-else class="course-empty">
           <span class="material-symbols-outlined">school</span>
-          <strong>{{ loading ? '正在加载课程' : '暂无课程' }}</strong>
-          <p>{{ loading ? '请稍候' : '可以新建课程，或切换筛选条件查看归档课程。' }}</p>
+          <strong>{{ loading ? '正在加载备课单元' : '暂无备课单元' }}</strong>
+          <p>{{ loading ? '请稍候' : '可以新建备课单元，或切换筛选条件查看归档内容。' }}</p>
         </div>
       </section>
 
@@ -210,17 +302,17 @@ onMounted(loadCourses);
         <section class="course-detail-card">
           <div class="detail-top">
             <span class="course-status" :class="{ warn: selectedCourse.statusTone === 'warn' }">{{ selectedCourse.status }}</span>
-            <h2>{{ selectedCourse.shortTitle }}</h2>
-            <div class="detail-meta">{{ selectedCourse.grade }} ・ {{ selectedCourse.subject }} ・ {{ selectedCourse.duration }} ・ 上次编辑 {{ selectedCourse.updatedAt }}</div>
+            <h2>{{ selectedCourse.title }}</h2>
+            <div class="detail-meta">{{ selectedCourse.groupTitle }} ・ {{ selectedCourse.duration }} ・ 上次编辑 {{ selectedCourse.updatedAt }}</div>
           </div>
-          <div class="detail-row"><span>年级</span><strong>{{ selectedCourse.grade }}</strong></div>
-          <div class="detail-row"><span>学科</span><strong>{{ selectedCourse.subject }} ・ {{ selectedCourse.title.replace(/^.*《|》$/g, '') }}</strong></div>
+          <div class="detail-row"><span>所属课程</span><strong>{{ selectedCourse.groupTitle }}</strong></div>
+          <div class="detail-row"><span>单元学科</span><strong>{{ selectedCourse.grade }} ・ {{ selectedCourse.subject }}</strong></div>
           <div class="detail-row"><span>课时时长</span><strong>{{ selectedCourse.duration }}</strong></div>
           <div class="detail-row"><span>备课时间</span><strong>{{ selectedCourse.updatedAt }}</strong></div>
           <div class="detail-row"><span>教学目标</span><strong>{{ selectedCourse.goal }}</strong></div>
           <div class="detail-row"><span>核心知识点</span><strong>{{ selectedCourse.todos }}</strong></div>
           <div class="detail-actions">
-            <button class="soft-btn" type="button" @click="notify('复制课程将在题库 CRUD 后接入')">复制课程</button>
+            <button class="soft-btn" type="button" @click="notify('复制备课单元将在题库 CRUD 后接入')">复制单元</button>
             <button class="soft-btn" type="button" :disabled="loading" @click="toggleArchive">{{ selectedCourse.apiStatus === 'archived' ? '恢复' : '归档' }}</button>
             <button class="primary-btn" type="button" @click="continueDesign">
               继续设计
@@ -235,8 +327,8 @@ onMounted(loadCourses);
       <form class="course-dialog" @submit.prevent="submitNewCourse">
         <header>
           <div>
-            <h2>新建课程</h2>
-            <p>填写基础信息后，系统会保存到数据库并进入课件生成详情。</p>
+            <h2>新建备课单元</h2>
+            <p>备课单元会挂到真实课程下，保存后进入原有课件、导图和教案生成工作台。</p>
           </div>
           <button class="dialog-icon-btn" type="button" aria-label="关闭" @click="showCreateDialog = false">
             <span class="material-symbols-outlined">close</span>
@@ -245,7 +337,16 @@ onMounted(loadCourses);
 
         <div class="course-form-grid">
           <label class="course-field wide">
-            <span>课程名称</span>
+            <span>所属课程</span>
+            <select v-model="createForm.groupId" @change="syncCreateGroupFields">
+              <option value="">按年级和学科自动匹配</option>
+              <option v-for="group in courseGroups" :key="group.id" :value="group.id">
+                {{ group.title }}
+              </option>
+            </select>
+          </label>
+          <label class="course-field wide">
+            <span>备课单元名称</span>
             <input v-model="createForm.title" type="text" placeholder="例如：牛顿第二定律" />
           </label>
           <label class="course-field">
@@ -269,15 +370,15 @@ onMounted(loadCourses);
             <input v-model="createForm.knowledgeText" type="text" placeholder="用逗号分隔，例如：F=ma，合外力计算，加速度方向" />
           </label>
           <label class="course-field wide">
-            <span>课程说明</span>
-            <textarea v-model="createForm.description" rows="2" placeholder="可选，用于课程列表摘要"></textarea>
+            <span>单元说明</span>
+            <textarea v-model="createForm.description" rows="2" placeholder="可选，用于备课单元列表摘要"></textarea>
           </label>
         </div>
 
         <footer>
           <button class="soft-btn" type="button" @click="showCreateDialog = false">取消</button>
           <button class="primary-btn" type="submit" :disabled="loading">
-            保存并进入生成
+            保存并进入备课
             <span class="material-symbols-outlined">arrow_forward</span>
           </button>
         </footer>
