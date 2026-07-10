@@ -91,6 +91,16 @@ function answerId(studentId, sessionIdValue, questionIdValue) {
   return `answer-${studentId}-${sessionIdValue}-${questionIdValue}`;
 }
 
+function getCourseKnowledgeTags(course, index) {
+  const presets = {
+    'dev-course-reading': ['主旨判断', '细节定位', '推断理解', '错因复盘'],
+    'dev-course-quadratic': ['图像性质', '定义域值域', '单调性', '最值分析'],
+    'course-newton-2': ['受力分析', '条件提取', '公式迁移', '错因复盘']
+  };
+  const tags = presets[course.id] || [`${course.title}概念`, `${course.title}条件`, `${course.title}迁移`, `${course.title}复盘`];
+  return [tags[index] || course.title];
+}
+
 function buildQuestions(course) {
   return [
     {
@@ -101,7 +111,7 @@ function buildQuestions(course) {
       options: ['A. 只记忆结论', `B. 理解${course.title}的适用条件`, 'C. 忽略题干信息', 'D. 只看答案'],
       answer: { value: `B. 理解${course.title}的适用条件` },
       analysis: '先判断概念和适用条件，再进入计算或文本分析。',
-      knowledge: [course.title]
+      knowledge: getCourseKnowledgeTags(course, 0)
     },
     {
       id: questionId(course.id, 2),
@@ -111,7 +121,7 @@ function buildQuestions(course) {
       options: [],
       answer: { value: '条件' },
       analysis: '先提取条件，再选择公式或分析路径。',
-      knowledge: [course.title]
+      knowledge: getCourseKnowledgeTags(course, 1)
     },
     {
       id: questionId(course.id, 3),
@@ -121,7 +131,7 @@ function buildQuestions(course) {
       options: ['A. 跳过过程', 'B. 只背题型', 'C. 建立知识点之间的联系', 'D. 不复盘错题'],
       answer: { value: 'C. 建立知识点之间的联系' },
       analysis: '跨题型迁移依赖知识结构，而不是单题记忆。',
-      knowledge: [course.title]
+      knowledge: getCourseKnowledgeTags(course, 2)
     },
     {
       id: questionId(course.id, 4),
@@ -131,7 +141,7 @@ function buildQuestions(course) {
       options: [],
       answer: { value: '错因' },
       analysis: '错因复盘可以帮助定位概念、审题或计算问题。',
-      knowledge: [course.title]
+      knowledge: getCourseKnowledgeTags(course, 3)
     }
   ];
 }
@@ -365,6 +375,8 @@ async function upsertEnrollments() {
 async function upsertAnswers() {
   const answerSeeds = [
     ['stu-chenyu', sessionId('class-2026-physics-1', 'course-newton-2'), 'course-newton-2', [true, true, false]],
+    ['stu-chenyu', 'session-personal-stu-chenyu-dev-course-reading', 'dev-course-reading', [true, false, true, true]],
+    ['stu-chenyu', 'session-personal-stu-chenyu-dev-course-quadratic', 'dev-course-quadratic', [true, false, true]],
     ['stu-liming', sessionId('class-2026-physics-1', 'course-newton-2'), 'course-newton-2', [true, false]],
     ['dev-stu-zhouxuan', sessionId('class-2026-physics-1', 'dev-course-force-composition'), 'dev-course-force-composition', [true, true]],
     ['dev-stu-luoyang', sessionId('dev-class-grade1-1', 'dev-course-motion'), 'dev-course-motion', [true, false, true]],

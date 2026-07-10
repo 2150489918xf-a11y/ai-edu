@@ -1,11 +1,27 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { use } from 'echarts/core';
+import { BarChart, PieChart, RadarChart } from 'echarts/charts';
+import { GridComponent, LegendComponent, RadarComponent, TooltipComponent } from 'echarts/components';
+import { CanvasRenderer } from 'echarts/renderers';
+import VChart from 'vue-echarts';
 import {
   generateStudentCourseProfile,
   getStudentAnalysis,
   getStudentCourseAnalysis
 } from '../../data/studentApiClient';
+
+use([
+  BarChart,
+  PieChart,
+  RadarChart,
+  GridComponent,
+  LegendComponent,
+  RadarComponent,
+  TooltipComponent,
+  CanvasRenderer
+]);
 
 const DEFAULT_STUDENT_ID = 'stu-chenyu';
 
@@ -28,8 +44,9 @@ const topWeakPoints = computed(() => summary.value.weakPoints || []);
 const profile = computed(() => courseDetail.value?.profile || selectedCourse.value?.profile || null);
 const hasAnswers = computed(() => Number(courseDetail.value?.summary?.answeredCount || selectedCourse.value?.summary?.answeredCount || 0) > 0);
 const detailSummary = computed(() => courseDetail.value?.summary || {});
+const chartConfig = computed(() => normalizeChartConfig(profile.value?.recommendedPractice?.chartConfig, buildFallbackChartConfig()));
 const knowledgeChartItems = computed(() => {
-  const items = courseDetail.value?.knowledgeStats || [];
+  const items = chartConfig.value.knowledgeMastery || [];
   return [...items]
     .sort((a, b) => (b.answered || 0) - (a.answered || 0) || (a.accuracy || 0) - (b.accuracy || 0))
     .slice(0, 6)
@@ -39,6 +56,12 @@ const knowledgeChartItems = computed(() => {
     }));
 });
 const abilityMetrics = computed(() => {
+  if (chartConfig.value.abilityRadar?.length) {
+    return chartConfig.value.abilityRadar.map((item) => ({
+      label: item.name,
+      value: clampPercent(item.value)
+    }));
+  }
   const summaryValue = detailSummary.value;
   const knowledgeStats = courseDetail.value?.knowledgeStats || [];
   const answeredKnowledgeCount = knowledgeStats.filter((item) => Number(item.answered || 0) > 0).length;
@@ -55,18 +78,106 @@ const abilityMetrics = computed(() => {
     { label: '画像完整', value: profile.value ? 82 : (summaryValue.answeredCount ? 46 : 0) }
   ];
 });
-const radarGridPolygons = computed(() => [0.25, 0.5, 0.75, 1].map((level) => radarPoints(abilityMetrics.value, level)));
-const radarPolygon = computed(() => radarPoints(abilityMetrics.value));
-const radarAxis = computed(() => abilityMetrics.value.map((item, index) => {
-  const end = getRadarPoint(index, abilityMetrics.value.length, 1);
-  const label = getRadarPoint(index, abilityMetrics.value.length, 1.18);
-  return { ...item, x: end.x, y: end.y, labelX: label.x, labelY: label.y };
-}));
 const radarScore = computed(() => {
   if (!abilityMetrics.value.length) return 0;
   return Math.round(abilityMetrics.value.reduce((sum, item) => sum + item.value, 0) / abilityMetrics.value.length);
 });
+const radarOption = computed(() => ({
+  color: ['#2fac66'],
+  tooltip: { trigger: 'item' },
+  radar: {
+    radius: '62%',
+    center: ['50%', '52%'],
+    splitNumber: 4,
+    axisName: {
+      color: '#52645b',
+      fontSize: 12,
+      fontWeight: 700
+    },
+    axisLine: { lineStyle: { color: 'rgba(16, 55, 35, .12)' } },
+    splitLine: { lineStyle: { color: 'rgba(16, 55, 35, .12)' } },
+    splitArea: {
+      areaStyle: {
+        color: ['rgba(47, 172, 102, .04)', 'rgba(47, 172, 102, .08)']
+      }
+    },
+    indicator: abilityMetrics.value.map((item) => ({ name: item.label, max: 100 }))
+  },
+  series: [{
+    type: 'radar',
+    data: [{ value: abilityMetrics.value.map((item) => item.value), name: '能力评分' }],
+    areaStyle: { color: 'rgba(47, 172, 102, .28)' },
+    lineStyle: { width: 2 },
+    symbolSize: 5
+  }]
+}));
+const knowledgeBarOption = computed(() => ({
+  color: ['#2fac66'],
+  grid: { left: 36, right: 18, top: 24, bottom: 54 },
+  tooltip: {
+    trigger: 'axis',
+    axisPointer: { type: 'shadow' },
+    formatter(params) {
+      const item = params?.[0];
+      const source = knowledgeChartItems.value[item?.dataIndex || 0] || {};
+      return `${source.name || ''}<br/>掌握度：${item?.value || 0}%<br/>正确：${source.correct || 0}/${source.answered || 0}`;
+    }
+  },
+  xAxis: {
+    type: 'category',
+    data: knowledgeChartItems.value.map((item) => item.name),
+    axisLabel: {
+      color: '#52645b',
+      fontSize: 11,
+      interval: 0,
+      width: 64,
+      overflow: 'truncate'
+    },
+    axisTick: { show: false },
+    axisLine: { lineStyle: { color: 'rgba(16, 55, 35, .12)' } }
+  },
+  yAxis: {
+    type: 'value',
+    max: 100,
+    axisLabel: { formatter: '{value}%', color: '#52645b' },
+    splitLine: { lineStyle: { color: 'rgba(16, 55, 35, .08)' } }
+  },
+  series: [{
+    type: 'bar',
+    data: knowledgeChartItems.value.map((item) => item.accuracy),
+    barMaxWidth: 34,
+    itemStyle: { borderRadius: [8, 8, 4, 4] }
+  }]
+}));
+const answerPieOption = computed(() => ({
+  color: answerComposition.value.map((item) => item.color),
+  tooltip: { trigger: 'item', formatter: '{b}: {c} 题 ({d}%)' },
+  legend: {
+    show: false
+  },
+  series: [{
+    type: 'pie',
+    radius: ['56%', '76%'],
+    center: ['50%', '50%'],
+    avoidLabelOverlap: true,
+    label: {
+      show: false
+    },
+    labelLine: { show: false },
+    data: answerComposition.value.map((item) => ({ name: item.label, value: item.value }))
+  }]
+}));
 const answerComposition = computed(() => {
+  if (chartConfig.value.answerDistribution?.length) {
+    const totalValue = Math.max(chartConfig.value.answerDistribution.reduce((sum, item) => sum + Number(item.value || 0), 0), 1);
+    const colors = ['#2fac66', '#e36f45', '#dce5df', '#4aa3a2', '#f3bd4f'];
+    return chartConfig.value.answerDistribution.map((item, index) => ({
+      label: item.name,
+      value: Number(item.value || 0),
+      percent: Math.round((Number(item.value || 0) / totalValue) * 100),
+      color: colors[index % colors.length]
+    }));
+  }
   const summaryValue = detailSummary.value;
   const correct = Number(summaryValue.correctCount || 0);
   const wrong = Number(summaryValue.wrongCount || 0);
@@ -78,46 +189,142 @@ const answerComposition = computed(() => {
     { label: '未答', value: unanswered, percent: Math.round((unanswered / total) * 100), color: '#dce5df' }
   ];
 });
-const answerDonutStyle = computed(() => {
-  let cursor = 0;
-  const segments = answerComposition.value.map((item, index) => {
-    const start = cursor;
-    cursor = index === answerComposition.value.length - 1 ? 100 : cursor + item.percent;
-    return `${item.color} ${start}% ${cursor}%`;
-  });
-  return { background: `conic-gradient(${segments.join(', ')})` };
-});
 const weakReasonItems = computed(() => {
+  if (chartConfig.value.weakReasons?.length) return chartConfig.value.weakReasons.slice(0, 4);
   const reasons = profile.value?.mistakeReasons || [];
   if (reasons.length) return reasons.slice(0, 4);
   return (courseDetail.value?.wrongQuestions || [])
     .slice(0, 4)
     .map((item) => `${item.knowledge?.join('、') || '未标注知识点'}：${item.analysis || '需要复盘解题过程'}`);
 });
+const metricCards = computed(() => {
+  const value = detailSummary.value;
+  return [
+    {
+      label: '完成率',
+      value: formatPercent(value.completionRate),
+      meta: `${Number(value.answeredCount || 0)}/${Number(value.totalQuestions || 0)} 已答`,
+      tone: 'green'
+    },
+    {
+      label: '正确率',
+      value: formatPercent(value.accuracy),
+      meta: `${Number(value.correctCount || 0)} 题正确`,
+      tone: 'teal'
+    },
+    {
+      label: '平均用时',
+      value: `${Number(value.avgDurationSeconds || 0)}s`,
+      meta: '单题节奏',
+      tone: 'blue'
+    },
+    {
+      label: '错题',
+      value: Number(value.wrongCount || 0),
+      meta: '待复盘',
+      tone: Number(value.wrongCount || 0) ? 'orange' : 'green'
+    }
+  ];
+});
+const knowledgeDiagnosisItems = computed(() => knowledgeChartItems.value.map((item) => {
+  const answered = Number(item.answered || 0);
+  const total = Number(item.total || item.answered || 0);
+  const accuracy = clampPercent(item.accuracy);
+  let status = '待练习';
+  let tone = 'muted';
+  if (answered > 0 && accuracy < 60) {
+    status = '薄弱';
+    tone = 'weak';
+  } else if (answered > 0 && accuracy < 80) {
+    status = '巩固';
+    tone = 'steady';
+  } else if (answered > 0) {
+    status = '优势';
+    tone = 'strong';
+  }
+  return {
+    ...item,
+    total,
+    answered,
+    accuracy,
+    status,
+    tone
+  };
+}));
 
 function formatPercent(value) {
   return `${Number(value || 0)}%`;
 }
 
-function clampPercent(value) {
-  return Math.max(0, Math.min(100, Number(value || 0)));
-}
+function buildFallbackChartConfig() {
+  const summaryValue = detailSummary.value;
+  const knowledgeStats = courseDetail.value?.knowledgeStats || [];
+  const answeredKnowledgeCount = knowledgeStats.filter((item) => Number(item.answered || 0) > 0).length;
+  const knowledgeCoverage = knowledgeStats.length ? Math.round((answeredKnowledgeCount / knowledgeStats.length) * 100) : 0;
+  const avgDuration = Number(summaryValue.avgDurationSeconds || 0);
+  const paceScore = avgDuration ? clampPercent(Math.round(100 - Math.max(0, avgDuration - 45) * 0.8)) : 0;
+  const correct = Number(summaryValue.correctCount || 0);
+  const wrong = Number(summaryValue.wrongCount || 0);
+  const unanswered = Math.max(Number(summaryValue.totalQuestions || 0) - Number(summaryValue.answeredCount || 0), 0);
 
-function getRadarPoint(index, total, scale = 1) {
-  const angle = (-90 + (360 / total) * index) * (Math.PI / 180);
-  const radius = 82 * scale;
   return {
-    x: 110 + Math.cos(angle) * radius,
-    y: 110 + Math.sin(angle) * radius
+    abilityRadar: [
+      { name: '完成度', value: clampPercent(summaryValue.completionRate) },
+      { name: '准确率', value: clampPercent(summaryValue.accuracy) },
+      { name: '知识覆盖', value: clampPercent(knowledgeCoverage) },
+      { name: '答题节奏', value: paceScore },
+      { name: '错题控制', value: clampPercent(summaryValue.answeredCount ? Math.round((correct / summaryValue.answeredCount) * 100) : 0) },
+      { name: '画像完整', value: profile.value ? 82 : (summaryValue.answeredCount ? 46 : 0) }
+    ],
+    knowledgeMastery: knowledgeStats.map((item) => ({
+      name: item.name,
+      accuracy: clampPercent(item.accuracy),
+      correct: Number(item.correct || 0),
+      answered: Number(item.answered || 0),
+      wrong: Number(item.wrong || 0)
+    })),
+    answerDistribution: [
+      { name: '正确', value: correct },
+      { name: '错题', value: wrong },
+      { name: '未答', value: unanswered }
+    ],
+    weakReasons: (courseDetail.value?.wrongQuestions || [])
+      .slice(0, 4)
+      .map((item) => `${item.knowledge?.join('、') || '未标注知识点'}：${item.analysis || '需要复盘解题过程'}`)
   };
 }
 
-function radarPoints(items, scale = null) {
-  if (!items.length) return '';
-  return items.map((item, index) => {
-    const point = getRadarPoint(index, items.length, scale ?? clampPercent(item.value) / 100);
-    return `${point.x.toFixed(1)},${point.y.toFixed(1)}`;
-  }).join(' ');
+function normalizeChartConfig(value, fallback) {
+  const source = value && typeof value === 'object' ? value : {};
+  const normalizeRadar = (items) => (Array.isArray(items) ? items : [])
+    .map((item) => ({ name: String(item.name || item.label || ''), value: clampPercent(item.value ?? item.score) }))
+    .filter((item) => item.name);
+  const normalizeKnowledge = (items) => (Array.isArray(items) ? items : [])
+    .map((item) => ({
+      name: String(item.name || item.knowledge || ''),
+      accuracy: clampPercent(item.accuracy ?? item.value),
+      correct: Number(item.correct || 0),
+      answered: Number(item.answered || 0),
+      wrong: Number(item.wrong || 0)
+    }))
+    .filter((item) => item.name);
+  const normalizeDistribution = (items) => (Array.isArray(items) ? items : [])
+    .map((item) => ({ name: String(item.name || item.label || ''), value: Math.max(0, Number(item.value || 0)) }))
+    .filter((item) => item.name);
+  const normalizeReasons = (items) => (Array.isArray(items) ? items : [])
+    .map((item) => String(item || '').trim())
+    .filter(Boolean);
+
+  return {
+    abilityRadar: normalizeRadar(source.abilityRadar).length ? normalizeRadar(source.abilityRadar) : normalizeRadar(fallback.abilityRadar),
+    knowledgeMastery: normalizeKnowledge(source.knowledgeMastery).length ? normalizeKnowledge(source.knowledgeMastery) : normalizeKnowledge(fallback.knowledgeMastery),
+    answerDistribution: normalizeDistribution(source.answerDistribution).length ? normalizeDistribution(source.answerDistribution) : normalizeDistribution(fallback.answerDistribution),
+    weakReasons: normalizeReasons(source.weakReasons).length ? normalizeReasons(source.weakReasons) : normalizeReasons(fallback.weakReasons)
+  };
+}
+
+function clampPercent(value) {
+  return Math.max(0, Math.min(100, Number(value || 0)));
 }
 
 function formatWeakPoints(items = []) {
@@ -169,6 +376,17 @@ async function generateProfile() {
   } finally {
     generatingCourseId.value = '';
   }
+}
+
+function openPracticeGenerate() {
+  if (!selectedCourseId.value) return;
+  router.push({
+    path: '/student/analysis/practice-generate',
+    query: {
+      studentId: studentId.value,
+      courseId: selectedCourseId.value
+    }
+  });
 }
 
 onMounted(loadOverview);
@@ -258,10 +476,16 @@ onMounted(loadOverview);
               <h2>{{ courseDetail?.course?.title || selectedCourse?.course?.title || '选择课程' }}</h2>
               <p>{{ courseDetail?.course?.teacher || selectedCourse?.course?.teacher || '任课老师' }}</p>
             </div>
-            <button type="button" :disabled="!hasAnswers || generatingCourseId" @click="generateProfile">
-              <span class="material-symbols-outlined">auto_awesome</span>
-              {{ generatingCourseId ? '分析中' : profile ? '重新分析' : '生成画像' }}
-            </button>
+            <div class="detail-actions">
+              <button type="button" :disabled="!hasAnswers || generatingCourseId" @click="generateProfile">
+                <span class="material-symbols-outlined">auto_awesome</span>
+                {{ generatingCourseId ? '分析中' : profile ? '重新分析' : '生成画像' }}
+              </button>
+              <button type="button" :disabled="!selectedCourseId" @click="openPracticeGenerate">
+                <span class="material-symbols-outlined">quiz</span>
+                生成针对练习
+              </button>
+            </div>
           </header>
 
           <p v-if="detailError" class="detail-error">{{ detailError }}</p>
@@ -272,6 +496,14 @@ onMounted(loadOverview);
           </div>
 
           <template v-else-if="courseDetail">
+            <section class="compact-metrics" aria-label="课程答题指标">
+              <article v-for="item in metricCards" :key="item.label" :class="`metric-${item.tone}`">
+                <span>{{ item.label }}</span>
+                <strong>{{ item.value }}</strong>
+                <em>{{ item.meta }}</em>
+              </article>
+            </section>
+
             <section class="chart-grid">
               <article class="radar-card">
                 <div class="chart-card-header">
@@ -281,42 +513,7 @@ onMounted(loadOverview);
                   </div>
                   <strong>{{ radarScore }}</strong>
                 </div>
-                <svg class="radar-chart" viewBox="0 0 220 220" role="img" aria-label="课程能力雷达图">
-                  <polygon
-                    v-for="points in radarGridPolygons"
-                    :key="points"
-                    class="radar-grid-line"
-                    :points="points"
-                  />
-                  <line
-                    v-for="axis in radarAxis"
-                    :key="axis.label"
-                    class="radar-axis"
-                    x1="110"
-                    y1="110"
-                    :x2="axis.x"
-                    :y2="axis.y"
-                  />
-                  <polygon class="radar-area" :points="radarPolygon" />
-                  <circle
-                    v-for="(axis, index) in radarAxis"
-                    :key="`${axis.label}-point`"
-                    class="radar-point"
-                    :cx="getRadarPoint(index, radarAxis.length, axis.value / 100).x"
-                    :cy="getRadarPoint(index, radarAxis.length, axis.value / 100).y"
-                    r="3.4"
-                  />
-                  <text
-                    v-for="axis in radarAxis"
-                    :key="`${axis.label}-label`"
-                    class="radar-label"
-                    :x="axis.labelX"
-                    :y="axis.labelY"
-                    text-anchor="middle"
-                  >
-                    {{ axis.label }}
-                  </text>
-                </svg>
+                <VChart class="echart radar-echart" :option="radarOption" autoresize />
                 <div class="radar-legend">
                   <span v-for="item in abilityMetrics" :key="item.label">
                     {{ item.label }} {{ formatPercent(item.value) }}
@@ -332,14 +529,13 @@ onMounted(loadOverview);
                   </div>
                   <strong>{{ knowledgeChartItems.length }}</strong>
                 </div>
-                <div class="knowledge-columns" v-if="knowledgeChartItems.length">
-                  <div v-for="item in knowledgeChartItems" :key="item.name" class="knowledge-column">
-                    <div class="column-track">
-                      <span :style="{ height: `${item.accuracy || 0}%` }"></span>
-                    </div>
-                    <strong>{{ formatPercent(item.accuracy) }}</strong>
-                    <small :title="item.name">{{ item.name }}</small>
-                    <em>{{ item.correct }}/{{ item.answered }}</em>
+                <VChart v-if="knowledgeChartItems.length" class="echart knowledge-echart" :option="knowledgeBarOption" autoresize />
+                <div v-if="knowledgeDiagnosisItems.length" class="knowledge-diagnosis">
+                  <div v-for="item in knowledgeDiagnosisItems" :key="item.name">
+                    <strong :title="item.name">{{ item.name }}</strong>
+                    <span>{{ item.answered }}/{{ item.total || item.answered }} 题</span>
+                    <em>{{ formatPercent(item.accuracy) }}</em>
+                    <i :class="`status-${item.tone}`">{{ item.status }}</i>
                   </div>
                 </div>
                 <p v-else class="muted">暂无知识点答题数据</p>
@@ -353,9 +549,7 @@ onMounted(loadOverview);
                   <h3>完成状态分布</h3>
                 </div>
                 <div class="donut-row">
-                  <div class="answer-donut" :style="answerDonutStyle">
-                    <span>{{ formatPercent(courseDetail.summary.completionRate) }}</span>
-                  </div>
+                  <VChart class="echart donut-echart" :option="answerPieOption" autoresize />
                   <dl>
                     <div v-for="item in answerComposition" :key="item.label">
                       <dt><i :style="{ background: item.color }"></i>{{ item.label }}</dt>
@@ -374,37 +568,6 @@ onMounted(loadOverview);
                   <li v-for="item in weakReasonItems" :key="item">{{ item }}</li>
                 </ul>
                 <p v-else class="muted">当前课程暂无明显薄弱归因，继续完成练习后会自动补全。</p>
-              </article>
-            </section>
-
-            <section class="metric-grid">
-              <article>
-                <span>完成率</span>
-                <strong>{{ formatPercent(courseDetail.summary.completionRate) }}</strong>
-              </article>
-              <article>
-                <span>正确率</span>
-                <strong>{{ formatPercent(courseDetail.summary.accuracy) }}</strong>
-              </article>
-              <article>
-                <span>错题</span>
-                <strong>{{ courseDetail.summary.wrongCount }}</strong>
-              </article>
-              <article>
-                <span>平均用时</span>
-                <strong>{{ courseDetail.summary.avgDurationSeconds || 0 }}s</strong>
-              </article>
-            </section>
-
-            <section class="knowledge-panel">
-              <h3>知识点掌握</h3>
-              <article v-for="item in courseDetail.knowledgeStats" :key="item.name">
-                <div>
-                  <strong>{{ item.name }}</strong>
-                  <span>{{ item.correct }}/{{ item.answered }} 正确</span>
-                </div>
-                <div class="bar"><span :style="{ width: `${item.accuracy || 0}%` }"></span></div>
-                <em>{{ formatPercent(item.accuracy) }}</em>
               </article>
             </section>
 
@@ -489,8 +652,8 @@ onMounted(loadOverview);
 .course-analysis-card span,
 .course-analysis-card p,
 .detail-panel header p,
-.metric-grid span,
-.knowledge-panel span,
+.compact-metrics span,
+.compact-metrics em,
 .muted,
 .wrong-panel span {
   color: var(--muted);
@@ -597,8 +760,7 @@ onMounted(loadOverview);
   background: var(--mint);
 }
 
-.course-analysis-card dl,
-.metric-grid {
+.course-analysis-card dl {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
@@ -629,6 +791,13 @@ onMounted(loadOverview);
   padding-bottom: 14px;
 }
 
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .detail-panel header button:disabled {
   cursor: default;
   background: rgba(16, 55, 35, .08);
@@ -640,21 +809,70 @@ onMounted(loadOverview);
   font-weight: 800;
 }
 
-.metric-grid {
-  margin-top: 16px;
+.compact-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(132px, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+  border: 1px solid rgba(16, 55, 35, .08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .5);
+  padding: 8px;
 }
 
-.metric-grid article {
-  border-radius: 12px;
-  background: rgba(255, 255, 255, .58);
-  padding: 14px;
+.compact-metrics article {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 10px;
+  overflow: hidden;
+  min-height: 58px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .62);
+  padding: 10px 12px;
 }
 
-.metric-grid strong {
-  display: block;
-  margin-top: 6px;
+.compact-metrics article::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--green);
+  content: "";
+}
+
+.compact-metrics .metric-teal::before {
+  background: var(--teal);
+}
+
+.compact-metrics .metric-blue::before {
+  background: #4a8db8;
+}
+
+.compact-metrics .metric-orange::before {
+  background: #e36f45;
+}
+
+.compact-metrics span {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.compact-metrics strong {
+  grid-row: span 2;
+  color: var(--ink);
   font-family: var(--font-mono);
   font-size: 24px;
+  line-height: 1;
+}
+
+.compact-metrics em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
 }
 
 .chart-grid,
@@ -701,40 +919,88 @@ onMounted(loadOverview);
   font-size: 26px;
 }
 
-.radar-chart {
-  display: block;
-  width: min(260px, 100%);
-  margin: 8px auto 0;
+.echart {
+  width: 100%;
+  min-width: 0;
 }
 
-.radar-grid-line {
-  fill: none;
-  stroke: rgba(16, 55, 35, .12);
-  stroke-width: 1;
+.radar-echart {
+  height: 286px;
+  margin-top: 8px;
 }
 
-.radar-axis {
-  stroke: rgba(16, 55, 35, .12);
-  stroke-width: 1;
+.knowledge-echart {
+  height: 218px;
+  margin-top: 8px;
 }
 
-.radar-area {
-  fill: rgba(47, 172, 102, .28);
-  stroke: var(--green);
-  stroke-linejoin: round;
-  stroke-width: 2;
+.donut-echart {
+  height: 166px;
 }
 
-.radar-point {
-  fill: var(--deep);
-  stroke: #fff;
-  stroke-width: 1.5;
+.knowledge-diagnosis {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
 }
 
-.radar-label {
-  fill: var(--muted);
-  font-size: 11px;
+.knowledge-diagnosis div {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) 64px 52px 58px;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  border-radius: 9px;
+  background: rgba(16, 55, 35, .04);
+  padding: 7px 9px;
+}
+
+.knowledge-diagnosis strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.knowledge-diagnosis span,
+.knowledge-diagnosis em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
   font-weight: 800;
+}
+
+.knowledge-diagnosis em {
+  color: var(--deep);
+  font-family: var(--font-mono);
+}
+
+.knowledge-diagnosis i {
+  justify-self: end;
+  border-radius: 999px;
+  padding: 3px 7px;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.knowledge-diagnosis .status-strong {
+  background: rgba(47, 172, 102, .12);
+  color: var(--green);
+}
+
+.knowledge-diagnosis .status-steady {
+  background: rgba(74, 163, 162, .13);
+  color: var(--teal);
+}
+
+.knowledge-diagnosis .status-weak {
+  background: rgba(227, 111, 69, .13);
+  color: #c24f2e;
+}
+
+.knowledge-diagnosis .status-muted {
+  background: rgba(16, 55, 35, .07);
+  color: var(--muted);
 }
 
 .radar-legend {
@@ -756,99 +1022,12 @@ onMounted(loadOverview);
   font-weight: 800;
 }
 
-.knowledge-columns {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(42px, 1fr));
-  align-items: end;
-  gap: 10px;
-  min-height: 240px;
-  margin-top: 12px;
-}
-
-.knowledge-column {
-  display: grid;
-  grid-template-rows: 150px auto auto auto;
-  align-items: end;
-  gap: 6px;
-  min-width: 0;
-  text-align: center;
-}
-
-.column-track {
-  display: flex;
-  width: 100%;
-  height: 150px;
-  align-items: flex-end;
-  overflow: hidden;
-  border-radius: 10px 10px 6px 6px;
-  background:
-    linear-gradient(to top, rgba(16, 55, 35, .08) 1px, transparent 1px) 0 0 / 100% 25%,
-    rgba(16, 55, 35, .05);
-}
-
-.column-track span {
-  display: block;
-  width: 100%;
-  min-height: 4px;
-  border-radius: 10px 10px 4px 4px;
-  background: linear-gradient(180deg, var(--teal), var(--green));
-}
-
-.knowledge-column strong {
-  color: var(--deep);
-  font-family: var(--font-mono);
-  font-size: 15px;
-}
-
-.knowledge-column small {
-  overflow: hidden;
-  min-height: 34px;
-  color: var(--ink);
-  text-overflow: ellipsis;
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1.35;
-}
-
-.knowledge-column em {
-  color: var(--muted);
-  font-size: 12px;
-  font-style: normal;
-  font-weight: 800;
-}
-
 .donut-row {
   display: grid;
-  grid-template-columns: 132px minmax(0, 1fr);
+  grid-template-columns: 166px minmax(0, 1fr);
   align-items: center;
   gap: 16px;
   margin-top: 14px;
-}
-
-.answer-donut {
-  position: relative;
-  display: grid;
-  width: 132px;
-  aspect-ratio: 1;
-  place-items: center;
-  border-radius: 50%;
-}
-
-.answer-donut::after {
-  position: absolute;
-  inset: 18px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, .92);
-  content: "";
-}
-
-.answer-donut span {
-  position: relative;
-  z-index: 1;
-  color: var(--deep);
-  font-family: var(--font-mono);
-  font-size: 24px;
-  font-weight: 900;
 }
 
 .donut-row dl {
@@ -904,7 +1083,6 @@ onMounted(loadOverview);
   line-height: 1.55;
 }
 
-.knowledge-panel,
 .profile-panel,
 .wrong-panel {
   display: grid;
@@ -912,40 +1090,10 @@ onMounted(loadOverview);
   margin-top: 18px;
 }
 
-.knowledge-panel h3,
 .profile-panel h3,
 .wrong-panel h3 {
   margin: 0;
   font-size: 18px;
-}
-
-.knowledge-panel article {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 180px 52px;
-  align-items: center;
-  gap: 10px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, .56);
-  padding: 10px;
-}
-
-.bar {
-  height: 8px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(16, 55, 35, .08);
-}
-
-.bar span {
-  display: block;
-  height: 100%;
-  background: linear-gradient(90deg, var(--green), var(--teal));
-}
-
-.knowledge-panel em {
-  color: var(--green);
-  font-style: normal;
-  font-weight: 900;
 }
 
 .profile-panel,
@@ -1028,6 +1176,10 @@ onMounted(loadOverview);
     grid-template-columns: 1fr;
   }
 
+  .compact-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .course-list-panel {
     position: static;
     max-height: none;
@@ -1042,14 +1194,10 @@ onMounted(loadOverview);
   }
 
   .analysis-summary,
-  .metric-grid,
   .radar-legend,
+  .compact-metrics,
   .profile-columns {
     grid-template-columns: 1fr;
-  }
-
-  .knowledge-columns {
-    grid-template-columns: repeat(3, minmax(44px, 1fr));
   }
 
   .donut-row {
@@ -1057,8 +1205,13 @@ onMounted(loadOverview);
     justify-items: center;
   }
 
-  .knowledge-panel article {
-    grid-template-columns: 1fr;
+  .knowledge-diagnosis div {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .knowledge-diagnosis em,
+  .knowledge-diagnosis i {
+    justify-self: start;
   }
 }
 </style>

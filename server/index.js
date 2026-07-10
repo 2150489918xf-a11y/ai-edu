@@ -9,6 +9,7 @@ import { createKnowledgeService } from './services/knowledgeService.js';
 import { createAiMindMapService } from './services/aiMindMapService.js';
 import { createAiQuestionService } from './services/aiQuestionService.js';
 import { createAiLessonPlanService } from './services/aiLessonPlanService.js';
+import { createAiStudentPracticeService } from './services/aiStudentPracticeService.js';
 import { createQuestionBankService } from './services/questionBankService.js';
 import { createStudentService } from './services/studentService.js';
 import { createStudentLearningService } from './services/studentLearningService.js';
@@ -36,6 +37,7 @@ const aiMindMapService = createAiMindMapService();
 const aiQuestionService = createAiQuestionService();
 const aiLessonPlanService = createAiLessonPlanService();
 const aiStudentTutorService = createAiStudentTutorService();
+const aiStudentPracticeService = createAiStudentPracticeService(prisma, { studentAnalysisService });
 const app = createLearningApiApp({
   adminService,
   authService,
@@ -50,6 +52,7 @@ const app = createLearningApiApp({
   aiMindMapService,
   aiQuestionService,
   aiStudentTutorService,
+  aiStudentPracticeService,
   aiLessonPlanService
 });
 const server = createServer(app);

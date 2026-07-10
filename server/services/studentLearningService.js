@@ -71,8 +71,16 @@ function buildTaskStatus(answeredCount, totalCount) {
   return 'completed';
 }
 
+function getSessionQuestions(session) {
+  const linkedQuestions = normalizeArray(session.sessionQuestions)
+    .map((item) => item.question)
+    .filter(Boolean);
+  const source = linkedQuestions.length ? linkedQuestions : normalizeArray(session.course?.questions);
+  return source.filter(isSupportedQuestion);
+}
+
 function buildTask(session, studentId) {
-  const questions = normalizeArray(session.course?.questions).filter(isSupportedQuestion);
+  const questions = getSessionQuestions(session);
   const answerQuestionIds = new Set(normalizeArray(session.answers).filter((answer) => answer.studentId === studentId).map((answer) => answer.questionId));
   const answeredCount = questions.filter((question) => answerQuestionIds.has(question.id)).length;
   return {
@@ -184,7 +192,11 @@ export function createStudentLearningService(prisma) {
       const sessions = await prisma.classroomSession.findMany({
         where: {
           classId: student.classId,
-          status: { not: STUDENT_ENROLLMENT_SESSION_STATUS }
+          status: { not: STUDENT_ENROLLMENT_SESSION_STATUS },
+          OR: [
+            { targetStudentId: null },
+            { targetStudentId: student.id }
+          ]
         },
         include: {
           course: {
@@ -199,6 +211,10 @@ export function createStudentLearningService(prisma) {
           answers: {
             where: { studentId },
             orderBy: { submittedAt: 'desc' }
+          },
+          sessionQuestions: {
+            include: { question: true },
+            orderBy: { sortOrder: 'asc' }
           }
         },
         orderBy: [{ startedAt: 'desc' }, { id: 'asc' }]
@@ -220,6 +236,10 @@ export function createStudentLearningService(prisma) {
               answers: {
                 where: { studentId },
                 orderBy: { submittedAt: 'desc' }
+              },
+              sessionQuestions: {
+                include: { question: true },
+                orderBy: { sortOrder: 'asc' }
               }
             }
           }
@@ -248,6 +268,10 @@ export function createStudentLearningService(prisma) {
           where: {
             classId: student.classId,
             status: { not: STUDENT_ENROLLMENT_SESSION_STATUS },
+            OR: [
+              { targetStudentId: null },
+              { targetStudentId: student.id }
+            ],
             course: { status: 'active', deletedAt: null }
           },
           select: { courseId: true }
@@ -328,6 +352,10 @@ export function createStudentLearningService(prisma) {
               answers: {
                 where: { studentId },
                 orderBy: { submittedAt: 'desc' }
+              },
+              sessionQuestions: {
+                include: { question: true },
+                orderBy: { sortOrder: 'asc' }
               }
             }
           }
@@ -368,6 +396,10 @@ export function createStudentLearningService(prisma) {
           answers: {
             where: { studentId },
             orderBy: { submittedAt: 'desc' }
+          },
+          sessionQuestions: {
+            include: { question: true },
+            orderBy: { sortOrder: 'asc' }
           }
         }
       });
@@ -402,7 +434,11 @@ export function createStudentLearningService(prisma) {
         where: {
           classId: student.classId,
           courseId,
-          status: { not: STUDENT_ENROLLMENT_SESSION_STATUS }
+          status: { not: STUDENT_ENROLLMENT_SESSION_STATUS },
+          OR: [
+            { targetStudentId: null },
+            { targetStudentId: student.id }
+          ]
         },
         include: {
           course: {
@@ -416,6 +452,10 @@ export function createStudentLearningService(prisma) {
           answers: {
             where: { studentId },
             orderBy: { submittedAt: 'desc' }
+          },
+          sessionQuestions: {
+            include: { question: true },
+            orderBy: { sortOrder: 'asc' }
           }
         },
         orderBy: [{ startedAt: 'desc' }, { id: 'asc' }]
@@ -437,6 +477,10 @@ export function createStudentLearningService(prisma) {
               answers: {
                 where: { studentId },
                 orderBy: { submittedAt: 'desc' }
+              },
+              sessionQuestions: {
+                include: { question: true },
+                orderBy: { sortOrder: 'asc' }
               }
             }
           }
@@ -470,13 +514,15 @@ export function createStudentLearningService(prisma) {
           OR: [
             {
               classId: student.classId,
-              status: { not: STUDENT_ENROLLMENT_SESSION_STATUS }
+              status: { not: STUDENT_ENROLLMENT_SESSION_STATUS },
+              targetStudentId: null
             },
             {
               studentEnrollments: {
                 some: { studentId, status: 'active' }
               }
-            }
+            },
+            { targetStudentId: studentId }
           ]
         },
         include: {
@@ -492,13 +538,17 @@ export function createStudentLearningService(prisma) {
           answers: {
             where: { studentId },
             orderBy: { submittedAt: 'desc' }
+          },
+          sessionQuestions: {
+            include: { question: true },
+            orderBy: { sortOrder: 'asc' }
           }
         }
       });
       if (!session) throw createHttpError(404, 'NOT_FOUND', '学生任务不存在');
 
       const answersByQuestion = new Map(session.answers.map((answer) => [answer.questionId, answer]));
-      const questions = normalizeArray(session.course.questions)
+      const questions = getSessionQuestions(session)
         .filter(isSupportedQuestion)
         .map((question) => normalizeQuestion(question, answersByQuestion.get(question.id)));
 
@@ -525,13 +575,15 @@ export function createStudentLearningService(prisma) {
           OR: [
             {
               classId: student.classId,
-              status: { not: STUDENT_ENROLLMENT_SESSION_STATUS }
+              status: { not: STUDENT_ENROLLMENT_SESSION_STATUS },
+              targetStudentId: null
             },
             {
               studentEnrollments: {
                 some: { studentId, status: 'active' }
               }
-            }
+            },
+            { targetStudentId: studentId }
           ]
         },
         include: {
@@ -547,13 +599,17 @@ export function createStudentLearningService(prisma) {
           answers: {
             where: { studentId },
             orderBy: { submittedAt: 'desc' }
+          },
+          sessionQuestions: {
+            include: { question: true },
+            orderBy: { sortOrder: 'asc' }
           }
         }
       });
       if (!session) throw createHttpError(404, 'NOT_FOUND', '学生任务不存在');
 
-      const question = session.course.questions.find((item) => item.id === payload.questionId);
-      if (!question || !isSupportedQuestion(question)) throw createHttpError(404, 'NOT_FOUND', '题目不存在');
+      const question = getSessionQuestions(session).find((item) => item.id === payload.questionId);
+      if (!question || !isSupportedQuestion(question)) throw createHttpError(404, 'NOT_FOUND', 'question does not belong to this task');
 
       const answerPayload = normalizeAnswer(payload.answer);
       const existing = await prisma.studentAnswer.findFirst({

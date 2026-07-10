@@ -108,6 +108,48 @@ export async function submitStudentTask(studentId, taskId) {
   });
 }
 
+export async function streamStudentPracticeGenerate(courseId, request = {}, handlers = {}) {
+  const apiBaseUrl = getApiBaseUrl();
+  if (!apiBaseUrl) throw new Error('Missing VITE_API_BASE_URL');
+
+  const token = getAuthToken();
+  const response = await fetch(`${apiBaseUrl}/student/analysis/courses/${encodeURIComponent(courseId)}/practice-generate-stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(request)
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error?.message || `Request failed with ${response.status}`);
+  }
+  if (!response.body?.getReader) throw new Error('Streaming is not supported in this browser');
+
+  const decoder = new TextDecoder();
+  const reader = response.body.getReader();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const frames = buffer.split(/\n\n/);
+    buffer = frames.pop() || '';
+    for (const frame of frames) {
+      const parsed = parseSseFrame(frame);
+      if (!parsed) continue;
+      if (parsed.event === 'delta') handlers.onDelta?.(parsed.data.text || '');
+      if (parsed.event === 'operation') handlers.onOperation?.(parsed.data.operation);
+      if (parsed.event === 'question') handlers.onQuestion?.(parsed.data.question);
+      if (parsed.event === 'task') handlers.onTask?.(parsed.data.task);
+      if (parsed.event === 'done') handlers.onDone?.(parsed.data);
+      if (parsed.event === 'error') throw new Error(parsed.data.message || 'AI practice stream failed');
+    }
+  }
+}
+
 export async function streamStudentAiChat(request = {}, handlers = {}) {
   const apiBaseUrl = getApiBaseUrl();
   if (!apiBaseUrl) throw new Error('Missing VITE_API_BASE_URL');

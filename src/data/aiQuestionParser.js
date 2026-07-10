@@ -16,7 +16,9 @@ function normalizeQuestion(raw = {}) {
     options: normalizeList(raw.options),
     answer: String(raw.answer ?? '').trim(),
     analysis: String(raw.analysis || raw.explanation || '').trim(),
-    knowledge: normalizeList(raw.knowledge || raw.knowledgePoints)
+    knowledge: normalizeList(raw.knowledge || raw.knowledgePoints),
+    targetReason: String(raw.targetReason || raw.reason || '').trim(),
+    remediationTip: String(raw.remediationTip || raw.tip || '').trim()
   };
 }
 

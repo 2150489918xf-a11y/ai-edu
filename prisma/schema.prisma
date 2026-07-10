@@ -163,6 +163,7 @@ model Question {
   weakPoint       String?                   @map("weak_point")
   optionDistribution Json?                  @map("option_distribution")
   knowledgePoints QuestionKnowledgePoint[]
+  sessionLinks    ClassroomSessionQuestion[]
   answers         StudentAnswer[]
   createdAt       DateTime                  @default(now()) @map("created_at")
   updatedAt       DateTime                  @updatedAt @map("updated_at")
@@ -184,16 +185,29 @@ model ClassroomSession {
   id        String          @id @default(uuid())
   classId   String          @map("class_id")
   courseId  String          @map("course_id")
+  targetStudentId String?    @map("target_student_id")
   class     Class           @relation(fields: [classId], references: [id], onDelete: Cascade)
   course    Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
   title     String
   status    String
   answers   StudentAnswer[]
+  sessionQuestions ClassroomSessionQuestion[]
   studentEnrollments StudentCourseEnrollment[]
   startedAt DateTime?       @map("started_at")
   endedAt   DateTime?       @map("ended_at")
 
   @@map("classroom_sessions")
+}
+
+model ClassroomSessionQuestion {
+  sessionId  String           @map("session_id")
+  questionId String           @map("question_id")
+  sortOrder  Int              @default(0) @map("sort_order")
+  session    ClassroomSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question   Question         @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@id([sessionId, questionId])
+  @@map("classroom_session_questions")
 }
 
 model StudentCourseEnrollment {

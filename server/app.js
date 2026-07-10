@@ -32,6 +32,7 @@ export function createLearningApiApp({
   aiMindMapService,
   aiQuestionService,
   aiStudentTutorService,
+  aiStudentPracticeService,
   aiLessonPlanService
 }) {
   if (!learningService) {
@@ -182,6 +183,34 @@ export function createLearningApiApp({
           decodeURIComponent(studentAnalysisCourseMatch[1])
         );
         sendJson(res, 200, { data });
+        return;
+      }
+
+      const studentPracticeGenerateStreamMatch = path.match(/^\/api\/v1\/student\/analysis\/courses\/([^/]+)\/practice-generate-stream$/);
+      if (studentLearningService && aiStudentPracticeService && req.method === 'POST' && studentPracticeGenerateStreamMatch) {
+        const courseId = decodeURIComponent(studentPracticeGenerateStreamMatch[1]);
+        const body = await readJsonBody(req);
+        startSse(res);
+        try {
+          await aiStudentPracticeService.streamGeneratePractice({
+            ...body,
+            courseId,
+            studentId: body.studentId || url.searchParams.get('studentId') || undefined
+          }, {
+            onDelta: (text) => sendSse(res, 'delta', { text }),
+            onOperation: (operation) => sendSse(res, 'operation', { operation }),
+            onQuestion: (question) => sendSse(res, 'question', { question }),
+            onTask: (task) => sendSse(res, 'task', { task }),
+            onDone: (meta) => sendSse(res, 'done', meta)
+          });
+        } catch (error) {
+          sendSse(res, 'error', {
+            code: error.code || 'AI_STREAM_ERROR',
+            message: error.message || 'AI student practice stream failed'
+          });
+        } finally {
+          res.end();
+        }
         return;
       }
 

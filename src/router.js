@@ -18,13 +18,15 @@ import QuestionDetailPage from './pages/QuestionDetailPage.vue';
 import QuestionGeneratePage from './pages/QuestionGeneratePage.vue';
 import StageAnalysisPage from './pages/StageAnalysisPage.vue';
 import StudentClassroomPage from './pages/StudentClassroomPage.vue';
-import StudentAnalysisPage from './pages/student/StudentAnalysisPage.vue';
-import StudentCourseDetailPage from './pages/student/StudentCourseDetailPage.vue';
-import StudentCoursesPage from './pages/student/StudentCoursesPage.vue';
-import StudentPracticePage from './pages/student/StudentPracticePage.vue';
 import WorkspacePage from './pages/WorkspacePage.vue';
 import { getAuthToken, getStoredAuthUser } from './data/authApiClient';
 import { createOutlineDraftCourse, notify } from './data/mockStore';
+
+const StudentAnalysisPage = () => import('./pages/student/StudentAnalysisPage.vue');
+const StudentAiPracticeGeneratePage = () => import('./pages/student/StudentAiPracticeGeneratePage.vue');
+const StudentCourseDetailPage = () => import('./pages/student/StudentCourseDetailPage.vue');
+const StudentCoursesPage = () => import('./pages/student/StudentCoursesPage.vue');
+const StudentPracticePage = () => import('./pages/student/StudentPracticePage.vue');
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -60,6 +62,7 @@ export const router = createRouter({
     { path: '/student', redirect: '/student/courses' },
     { path: '/student/courses', name: 'student-courses', component: StudentCoursesPage, meta: { fullscreen: true } },
     { path: '/student/analysis', name: 'student-analysis', component: StudentAnalysisPage, meta: { fullscreen: true } },
+    { path: '/student/analysis/practice-generate', name: 'student-ai-practice-generate', component: StudentAiPracticeGeneratePage, meta: { fullscreen: true } },
     { path: '/student/courses/:courseId', name: 'student-course-detail', component: StudentCourseDetailPage, meta: { fullscreen: true } },
     { path: '/student/tasks/:taskId/practice', name: 'student-practice', component: StudentPracticePage, meta: { fullscreen: true } },
     { path: '/student/classroom', name: 'student-classroom', component: StudentClassroomPage, meta: { fullscreen: true } },
@@ -89,9 +92,6 @@ router.beforeEach((to) => {
   const role = getLoggedInRole();
 
   if (isLoginRoute) {
-    if (role === 'student' && !isStudentLogin) return '/student/courses';
-    if (role === 'teacher' && !isTeacherLogin) return '/';
-    if (role === 'admin' && !isAdminLogin) return '/admin';
     return true;
   }
 

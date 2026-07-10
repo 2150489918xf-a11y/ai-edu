@@ -37,6 +37,74 @@ function getAccuracy(correct, total) {
   return total ? Math.round((correct / total) * 100) : 0;
 }
 
+function clampPercent(value) {
+  return Math.max(0, Math.min(100, Number(value || 0)));
+}
+
+function buildChartConfig({ summary, knowledgeStats, wrongQuestions }) {
+  const answeredKnowledgeCount = knowledgeStats.filter((item) => Number(item.answered || 0) > 0).length;
+  const knowledgeCoverage = knowledgeStats.length ? Math.round((answeredKnowledgeCount / knowledgeStats.length) * 100) : 0;
+  const avgDuration = Number(summary.avgDurationSeconds || 0);
+  const paceScore = avgDuration ? clampPercent(Math.round(100 - Math.max(0, avgDuration - 45) * 0.8)) : 0;
+  const correct = Number(summary.correctCount || 0);
+  const wrong = Number(summary.wrongCount || 0);
+  const unanswered = Math.max(Number(summary.totalQuestions || 0) - Number(summary.answeredCount || 0), 0);
+
+  return {
+    abilityRadar: [
+      { name: '完成度', value: clampPercent(summary.completionRate) },
+      { name: '准确率', value: clampPercent(summary.accuracy) },
+      { name: '知识覆盖', value: clampPercent(knowledgeCoverage) },
+      { name: '答题节奏', value: paceScore },
+      { name: '错题控制', value: clampPercent(summary.answeredCount ? getAccuracy(correct, summary.answeredCount) : 0) },
+      { name: '画像完整', value: summary.answeredCount ? 46 : 0 }
+    ],
+    knowledgeMastery: knowledgeStats
+      .slice(0, 8)
+      .map((item) => ({
+        name: item.name,
+        accuracy: clampPercent(item.accuracy),
+        correct: Number(item.correct || 0),
+        answered: Number(item.answered || 0),
+        wrong: Number(item.wrong || 0)
+      })),
+    answerDistribution: [
+      { name: '正确', value: correct },
+      { name: '错题', value: wrong },
+      { name: '未答', value: unanswered }
+    ],
+    weakReasons: wrongQuestions.slice(0, 4).map((item) => `${item.knowledge.join('、')}：${item.analysis || '需要复盘解题过程'}`)
+  };
+}
+
+function normalizeChartConfig(value, fallback) {
+  const source = value && typeof value === 'object' ? value : {};
+  const fallbackValue = fallback || {};
+  const abilityRadar = normalizeArray(source.abilityRadar).map((item) => ({
+    name: String(item.name || item.label || '').trim(),
+    value: clampPercent(item.value ?? item.score)
+  })).filter((item) => item.name);
+  const knowledgeMastery = normalizeArray(source.knowledgeMastery).map((item) => ({
+    name: String(item.name || item.knowledge || '').trim(),
+    accuracy: clampPercent(item.accuracy ?? item.value),
+    correct: Number(item.correct || 0),
+    answered: Number(item.answered || 0),
+    wrong: Number(item.wrong || 0)
+  })).filter((item) => item.name);
+  const answerDistribution = normalizeArray(source.answerDistribution).map((item) => ({
+    name: String(item.name || item.label || '').trim(),
+    value: Math.max(0, Number(item.value || 0))
+  })).filter((item) => item.name);
+  const weakReasons = normalizeArray(source.weakReasons).map((item) => String(item || '').trim()).filter(Boolean);
+
+  return {
+    abilityRadar: abilityRadar.length ? abilityRadar.slice(0, 8) : normalizeArray(fallbackValue.abilityRadar),
+    knowledgeMastery: knowledgeMastery.length ? knowledgeMastery.slice(0, 8) : normalizeArray(fallbackValue.knowledgeMastery),
+    answerDistribution: answerDistribution.length ? answerDistribution.slice(0, 5) : normalizeArray(fallbackValue.answerDistribution),
+    weakReasons: weakReasons.length ? weakReasons.slice(0, 6) : normalizeArray(fallbackValue.weakReasons)
+  };
+}
+
 function normalizeProfile(profile) {
   if (!profile) return null;
   return {
@@ -108,6 +176,7 @@ function buildLocalProfile({ course, summary, knowledgeStats, wrongQuestions }) 
       difficulty,
       questionTypes: ['choice', 'blank'],
       knowledge: recommendedKnowledge,
+      chartConfig: buildChartConfig({ summary, knowledgeStats, wrongQuestions }),
       source: 'local-statistics'
     }
   };
@@ -141,6 +210,23 @@ function buildAiPrompt(payload) {
   ].join('\n');
 }
 
+function buildAiPromptWithChartConfig(payload) {
+  return [
+    '你是高中学习数据分析助手。请根据学生答题统计生成学生画像。',
+    '只返回 JSON，不要返回 Markdown，不要输出解释文字。',
+    'JSON 字段必须包含 summary、mastery、weakPoints、mistakeReasons、recommendedPractice。',
+    'mastery 和 weakPoints 是数组，每项包含 knowledge、level、reason，可额外包含 accuracy。',
+    'recommendedPractice 必须包含 difficulty、questionTypes、knowledge、chartConfig。',
+    'chartConfig 是前端 ECharts 展示参数数据，不是完整 ECharts option。',
+    'chartConfig.abilityRadar: 数组，每项 { name, value }，value 为 0-100。',
+    'chartConfig.knowledgeMastery: 数组，每项 { name, accuracy, correct, answered, wrong }。',
+    'chartConfig.answerDistribution: 数组，每项 { name, value }。',
+    'chartConfig.weakReasons: 字符串数组，最多 6 条。',
+    '',
+    JSON.stringify(payload, null, 2)
+  ].join('\n');
+}
+
 async function requestDeepSeekAnalysis({ env, fetchImpl, payload }) {
   if (!env.DEEPSEEK_API_KEY) {
     throw createHttpError(500, 'AI_CREDENTIALS_MISSING', 'Missing DEEPSEEK_API_KEY');
@@ -157,7 +243,7 @@ async function requestDeepSeekAnalysis({ env, fetchImpl, payload }) {
       model,
       messages: [
         { role: 'system', content: '你是学生画像分析助手，输出必须是可解析 JSON。' },
-        { role: 'user', content: buildAiPrompt(payload) }
+        { role: 'user', content: buildAiPromptWithChartConfig(payload) }
       ],
       temperature: 0.2
     })
@@ -411,6 +497,7 @@ export function createStudentAnalysisService(prisma, { env = process.env, fetchI
     async generateCourseProfile(studentId, courseId) {
       const analysis = await buildCourseAnalysis(studentId, courseId);
       const localProfile = buildLocalProfile(analysis);
+      const localChartConfig = localProfile.recommendedPractice.chartConfig;
       let aiMeta = { provider: 'local', model: 'statistics' };
       let profilePayload = localProfile;
 
@@ -422,10 +509,19 @@ export function createStudentAnalysisService(prisma, { env = process.env, fetchI
           ...aiResult.profile,
           recommendedPractice: {
             ...localProfile.recommendedPractice,
-            ...(aiResult.profile.recommendedPractice || {})
+            ...(aiResult.profile.recommendedPractice || {}),
+            chartConfig: normalizeChartConfig(aiResult.profile.recommendedPractice?.chartConfig, localChartConfig)
           }
         };
       }
+
+      profilePayload = {
+        ...profilePayload,
+        recommendedPractice: {
+          ...(profilePayload.recommendedPractice || {}),
+          chartConfig: normalizeChartConfig(profilePayload.recommendedPractice?.chartConfig, localChartConfig)
+        }
+      };
 
       const saved = await prisma.learningProfile.upsert({
         where: { studentId_courseId: { studentId, courseId } },

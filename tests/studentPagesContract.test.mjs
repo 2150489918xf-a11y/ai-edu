@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 
 const routerSource = readFileSync(new URL('../src/router.js', import.meta.url), 'utf8');
 const appSource = readFileSync(new URL('../src/App.vue', import.meta.url), 'utf8');
+const loginSource = readFileSync(new URL('../src/pages/LoginPage.vue', import.meta.url), 'utf8');
 const coursesSource = readFileSync(new URL('../src/pages/student/StudentCoursesPage.vue', import.meta.url), 'utf8');
 const analysisSource = readFileSync(new URL('../src/pages/student/StudentAnalysisPage.vue', import.meta.url), 'utf8');
 const courseDetailSource = readFileSync(new URL('../src/pages/student/StudentCourseDetailPage.vue', import.meta.url), 'utf8');
@@ -13,6 +14,8 @@ assert.ok(routerSource.includes("path: '/student/analysis'"), 'student analysis 
 assert.ok(routerSource.includes("path: '/student/courses/:courseId'"), 'student course detail route should exist');
 assert.ok(routerSource.includes("path: '/student/tasks/:taskId/practice'"), 'student practice route should exist');
 assert.ok(!appSource.includes("to: '/student/courses'"), 'teacher navigation should not link to student app');
+assert.ok(loginSource.includes('logout();') && loginSource.includes('fillDemoAccount();'), 'login page should clear stale sessions when switching identity modes');
+assert.ok(!routerSource.includes("role === 'teacher' && !isTeacherLogin"), 'router should allow switching from teacher login state to student login page');
 
 assert.ok(coursesSource.includes('getStudentDashboard'), 'student courses page should load student dashboard data');
 assert.ok(!coursesSource.includes('listStudentCourseCatalog'), 'student courses page should not load a joinable course catalog');
@@ -30,7 +33,11 @@ assert.ok(analysisSource.includes('getStudentAnalysis') && analysisSource.includ
 assert.ok(analysisSource.includes('generateStudentCourseProfile'), 'student analysis page should generate AI learning profile');
 assert.ok(analysisSource.includes('AI 学生画像') && analysisSource.includes('错题记录'), 'student analysis page should display profile and wrong question sections');
 assert.ok(analysisSource.includes('position: sticky') && analysisSource.includes('course-list-panel'), 'student analysis course profile panel should stick while scrolling');
-assert.ok(analysisSource.includes('radar-chart') && analysisSource.includes('knowledge-columns') && analysisSource.includes('answer-donut'), 'student analysis page should show visual course insight charts');
+assert.ok(analysisSource.includes('vue-echarts') && analysisSource.includes('radarOption') && analysisSource.includes('knowledgeBarOption') && analysisSource.includes('answerPieOption'), 'student analysis page should render open-source ECharts insight charts');
+assert.ok(analysisSource.includes('chartConfig') && !analysisSource.includes('legacy-chart'), 'student analysis charts should use AI chart config without hidden legacy charts');
+assert.ok(analysisSource.includes('labelLine: { show: false }') && analysisSource.includes('legend: {') && analysisSource.includes('show: false'), 'answer composition chart should not render clipped outer labels');
+assert.ok(analysisSource.includes('compact-metrics') && analysisSource.includes('knowledge-diagnosis'), 'student analysis page should use compact KPI metrics and in-card knowledge diagnosis');
+assert.ok(!analysisSource.includes('metric-grid') && !analysisSource.includes('knowledge-panel'), 'student analysis page should not render sparse legacy metric or knowledge panels');
 assert.ok(courseDetailSource.includes('getStudentCourse'), 'student course detail page should load course tasks');
 assert.ok(practiceSource.includes('getStudentTask'), 'practice page should load task questions');
 assert.ok(practiceSource.includes('streamStudentAiChat'), 'practice page should stream AI tutor replies');

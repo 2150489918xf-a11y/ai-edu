@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { login } from '../data/authApiClient';
+import { login, logout } from '../data/authApiClient';
 
 const route = useRoute();
 const router = useRouter();
@@ -36,6 +36,7 @@ function fillDemoAccount() {
 }
 
 function switchMode(mode) {
+  logout();
   if (mode === 'admin') {
     router.replace('/admin/login');
     return;
@@ -70,7 +71,10 @@ async function submit() {
   }
 }
 
-watch(() => route.path, fillDemoAccount, { immediate: true });
+watch(() => route.path, () => {
+  logout();
+  fillDemoAccount();
+}, { immediate: true });
 </script>
 
 <template>
