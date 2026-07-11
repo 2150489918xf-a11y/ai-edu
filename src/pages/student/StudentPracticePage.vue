@@ -33,6 +33,10 @@ const chatFeedRef = ref(null);
 
 const studentId = computed(() => route.query.studentId || DEFAULT_STUDENT_ID);
 const taskId = computed(() => route.params.taskId);
+const returnCourseGroupId = computed(() => {
+  const explicit = Array.isArray(route.query.returnGroupId) ? route.query.returnGroupId[0] : route.query.returnGroupId;
+  return explicit || task.value?.course?.groupId || task.value?.course?.id || '';
+});
 const questions = computed(() => task.value?.questions || []);
 const currentQuestion = computed(() => questions.value[currentIndex.value] || null);
 const currentAnswer = computed(() => currentQuestion.value ? answers.value[currentQuestion.value.id]?.value || '' : '');
@@ -170,6 +174,13 @@ async function askAi() {
   }
 }
 
+function backToCourse() {
+  router.push({
+    path: returnCourseGroupId.value ? `/student/courses/${returnCourseGroupId.value}` : '/student/courses',
+    query: { studentId: studentId.value }
+  });
+}
+
 watch(
   () => [aiMessages.value.length, aiMessages.value.at(-1)?.text],
   scrollChatToBottom,
@@ -182,7 +193,7 @@ onMounted(loadTask);
 <template>
   <main class="practice-shell">
     <header class="practice-topbar">
-      <button type="button" aria-label="返回课程" @click="router.push({ path: `/student/courses/${task?.course?.id || ''}`, query: { studentId } })">
+      <button type="button" aria-label="返回课程" @click="backToCourse">
         <span class="material-symbols-outlined">chevron_left</span>
       </button>
       <div>

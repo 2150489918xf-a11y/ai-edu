@@ -26,7 +26,10 @@ function statusLabel(status) {
 function openTask(task) {
   router.push({
     path: `/student/tasks/${task.id}/practice`,
-    query: { studentId: studentId.value }
+    query: {
+      studentId: studentId.value,
+      returnGroupId: courseId.value
+    }
   });
 }
 

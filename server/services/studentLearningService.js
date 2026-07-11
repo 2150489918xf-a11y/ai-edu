@@ -803,6 +803,7 @@ export function createStudentLearningService(prisma) {
         ...buildTask(session, studentId),
         course: {
           id: session.course.id,
+          groupId: session.course.groupId,
           title: session.course.title,
           subject: session.course.subject,
           grade: session.course.grade,

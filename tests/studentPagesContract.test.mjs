@@ -8,6 +8,7 @@ const coursesSource = readFileSync(new URL('../src/pages/student/StudentCoursesP
 const analysisSource = readFileSync(new URL('../src/pages/student/StudentAnalysisPage.vue', import.meta.url), 'utf8');
 const courseDetailSource = readFileSync(new URL('../src/pages/student/StudentCourseDetailPage.vue', import.meta.url), 'utf8');
 const practiceSource = readFileSync(new URL('../src/pages/student/StudentPracticePage.vue', import.meta.url), 'utf8');
+const studentLearningServiceSource = readFileSync(new URL('../server/services/studentLearningService.js', import.meta.url), 'utf8');
 
 assert.ok(routerSource.includes("path: '/student/courses'"), 'student courses route should be independent');
 assert.ok(routerSource.includes("path: '/student/analysis'"), 'student analysis route should exist');
@@ -41,11 +42,14 @@ assert.ok(!analysisSource.includes('metric-grid') && !analysisSource.includes('k
 assert.ok(courseDetailSource.includes('getStudentCourseGroup'), 'student course detail page should load course group tasks');
 assert.ok(courseDetailSource.includes('unit-list') && courseDetailSource.includes('unit-grid'), 'student course detail page should display course units');
 assert.ok(courseDetailSource.includes('height: 100vh') && courseDetailSource.includes('overflow-y: auto'), 'student course detail page should use an internal scroll container');
+assert.ok(courseDetailSource.includes('returnGroupId: courseId.value'), 'student course detail page should pass the current course group id into practice');
 assert.ok(practiceSource.includes('getStudentTask'), 'practice page should load task questions');
 assert.ok(practiceSource.includes('streamStudentAiChat'), 'practice page should stream AI tutor replies');
 assert.ok(practiceSource.includes('上一题') && practiceSource.includes('下一题'), 'practice page should support previous and next question navigation');
 assert.ok(practiceSource.includes('question-nav'), 'practice page should include a question navigation sidebar');
 assert.ok(practiceSource.includes('ai-tutor-panel'), 'practice page should include an AI tutor sidebar');
 assert.ok(practiceSource.includes('saveStudentAnswer') && practiceSource.includes('submitStudentTask'), 'practice page should save answers and submit tasks');
+assert.ok(practiceSource.includes('returnCourseGroupId') && practiceSource.includes('task.value?.course?.groupId'), 'practice page should return to the course group detail id, not the unit course id');
+assert.ok(studentLearningServiceSource.includes('groupId: session.course.groupId'), 'student task API should expose the parent course group id for return navigation');
 
 console.log('student page contracts passed');
