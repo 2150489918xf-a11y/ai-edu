@@ -126,6 +126,7 @@ model CourseGroup {
   subject            String
   grade              String
   description        String?
+  knowledgeGraph     Json?                          @map("knowledge_graph")
   status             String                         @default("active")
   deletedAt          DateTime?                      @map("deleted_at")
   units              Course[]
@@ -137,61 +138,83 @@ model CourseGroup {
 }
 
 model QuestionBank {
-  id          String     @id @default(uuid())
-  title       String
-  subject     String
-  grade       String?
-  usage       String?
-  description String?
-  tags        Json       @default("[]")
-  status      String     @default("active")
-  deletedAt   DateTime?  @map("deleted_at")
-  questions   Question[]
-  createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt @map("updated_at")
+  id              String                     @id @default(uuid())
+  title           String
+  subject         String
+  grade           String?
+  usage           String?
+  description     String?
+  tags            Json                       @default("[]")
+  graphRevision   Int                        @default(0) @map("graph_revision")
+  status          String                     @default("active")
+  deletedAt       DateTime?                  @map("deleted_at")
+  questions       Question[]
+  knowledgePoints KnowledgePoint[]
+  relations       KnowledgeRelation[]
+  layouts         KnowledgeGraphNodeLayout[]
+  createdAt       DateTime                   @default(now()) @map("created_at")
+  updatedAt       DateTime                   @updatedAt @map("updated_at")
 
   @@map("question_banks")
 }
 
 model KnowledgePoint {
-  id          String                   @id @default(uuid())
-  courseId    String                   @map("course_id")
-  course      Course                   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  name        String
-  description String?
-  parentId    String?                  @map("parent_id")
-  parent      KnowledgePoint?          @relation("KnowledgePointTree", fields: [parentId], references: [id])
-  children    KnowledgePoint[]         @relation("KnowledgePointTree")
-  questions   QuestionKnowledgePoint[]
+  id                String                     @id @default(uuid())
+  courseId          String?                    @map("course_id")
+  course            Course?                    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  bankId            String?                    @map("bank_id")
+  bank              QuestionBank?              @relation(fields: [bankId], references: [id], onDelete: Cascade)
+  name              String
+  canonicalKey      String?                    @map("canonical_key")
+  aliases           Json                       @default("[]")
+  category          String?
+  description       String?
+  source            String                     @default("ai")
+  status            String                     @default("active")
+  manualLocked      Boolean                    @default(false) @map("manual_locked")
+  parentId          String?                    @map("parent_id")
+  parent            KnowledgePoint?            @relation("KnowledgePointTree", fields: [parentId], references: [id])
+  children          KnowledgePoint[]           @relation("KnowledgePointTree")
+  mergedIntoId      String?                    @map("merged_into_id")
+  mergedInto        KnowledgePoint?            @relation("KnowledgePointMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedFrom        KnowledgePoint[]           @relation("KnowledgePointMerge")
+  questions         QuestionKnowledgePoint[]
+  outgoingRelations KnowledgeRelation[]        @relation("KnowledgeRelationSource")
+  incomingRelations KnowledgeRelation[]        @relation("KnowledgeRelationTarget")
+  layouts           KnowledgeGraphNodeLayout[]
 
+  @@unique([bankId, canonicalKey])
+  @@index([bankId, status])
   @@map("knowledge_points")
 }
 
 model Question {
-  id                 String                     @id @default(uuid())
-  bankId             String?                    @map("bank_id")
-  bank               QuestionBank?              @relation(fields: [bankId], references: [id], onDelete: SetNull)
-  courseId           String?                    @map("course_id")
-  course             Course?                    @relation(fields: [courseId], references: [id], onDelete: SetNull)
-  type               String
-  stage              String?
-  difficulty         String
-  title              String
-  options            Json?
-  answer             Json
-  analysis           String?
-  knowledge          Json?
-  status             String                     @default("active")
-  deletedAt          DateTime?                  @map("deleted_at")
-  accuracy           Int?
-  avgTimeSeconds     Int?                       @map("avg_time_seconds")
-  weakPoint          String?                    @map("weak_point")
-  optionDistribution Json?                      @map("option_distribution")
-  knowledgePoints    QuestionKnowledgePoint[]
-  sessionLinks       ClassroomSessionQuestion[]
-  answers            StudentAnswer[]
-  createdAt          DateTime                   @default(now()) @map("created_at")
-  updatedAt          DateTime                   @updatedAt @map("updated_at")
+  id                  String                       @id @default(uuid())
+  bankId              String?                      @map("bank_id")
+  bank                QuestionBank?                @relation(fields: [bankId], references: [id], onDelete: SetNull)
+  courseId            String?                      @map("course_id")
+  course              Course?                      @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  type                String
+  stage               String?
+  difficulty          String
+  title               String
+  options             Json?
+  answer              Json
+  analysis            String?
+  knowledge           Json?
+  status              String                       @default("active")
+  deletedAt           DateTime?                    @map("deleted_at")
+  accuracy            Int?
+  avgTimeSeconds      Int?                         @map("avg_time_seconds")
+  weakPoint           String?                      @map("weak_point")
+  optionDistribution  Json?                        @map("option_distribution")
+  knowledgePoints     QuestionKnowledgePoint[]
+  knowledgeExtraction QuestionKnowledgeExtraction?
+  relationEvidence    KnowledgeRelationEvidence[]
+  sessionLinks        ClassroomSessionQuestion[]
+  answers             StudentAnswer[]
+  createdAt           DateTime                     @default(now()) @map("created_at")
+  updatedAt           DateTime                     @updatedAt @map("updated_at")
 
   @@map("questions")
 }
@@ -201,9 +224,82 @@ model QuestionKnowledgePoint {
   knowledgePointId String         @map("knowledge_point_id")
   question         Question       @relation(fields: [questionId], references: [id], onDelete: Cascade)
   knowledgePoint   KnowledgePoint @relation(fields: [knowledgePointId], references: [id], onDelete: Cascade)
+  source           String         @default("explicit")
+  confidence       Float?
+  manualLocked     Boolean        @default(false) @map("manual_locked")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @default(now()) @updatedAt @map("updated_at")
 
   @@id([questionId, knowledgePointId])
   @@map("question_knowledge_points")
+}
+
+model KnowledgeRelation {
+  id            String                      @id @default(uuid())
+  bankId        String                      @map("bank_id")
+  bank          QuestionBank                @relation(fields: [bankId], references: [id], onDelete: Cascade)
+  sourcePointId String                      @map("source_point_id")
+  sourcePoint   KnowledgePoint              @relation("KnowledgeRelationSource", fields: [sourcePointId], references: [id], onDelete: Cascade)
+  targetPointId String                      @map("target_point_id")
+  targetPoint   KnowledgePoint              @relation("KnowledgeRelationTarget", fields: [targetPointId], references: [id], onDelete: Cascade)
+  type          String
+  label         String
+  source        String
+  confidence    Float?
+  supportCount  Int                         @default(0) @map("support_count")
+  manualLocked  Boolean                     @default(false) @map("manual_locked")
+  status        String                      @default("active")
+  evidence      KnowledgeRelationEvidence[]
+  createdAt     DateTime                    @default(now()) @map("created_at")
+  updatedAt     DateTime                    @updatedAt @map("updated_at")
+
+  @@unique([bankId, sourcePointId, targetPointId, type])
+  @@index([bankId, status])
+  @@map("knowledge_relations")
+}
+
+model KnowledgeRelationEvidence {
+  relationId   String            @map("relation_id")
+  questionId   String            @map("question_id")
+  relation     KnowledgeRelation @relation(fields: [relationId], references: [id], onDelete: Cascade)
+  question     Question          @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  evidenceType String            @map("evidence_type")
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  @@id([relationId, questionId])
+  @@map("knowledge_relation_evidence")
+}
+
+model QuestionKnowledgeExtraction {
+  questionId    String    @id @map("question_id")
+  question      Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  contentHash   String    @map("content_hash")
+  status        String    @default("pending")
+  promptVersion String    @default("v1") @map("prompt_version")
+  provider      String?
+  model         String?
+  attempts      Int       @default(0)
+  errorMessage  String?   @map("error_message")
+  analyzedAt    DateTime? @map("analyzed_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, updatedAt])
+  @@map("question_knowledge_extractions")
+}
+
+model KnowledgeGraphNodeLayout {
+  bankId           String         @map("bank_id")
+  knowledgePointId String         @map("knowledge_point_id")
+  bank             QuestionBank   @relation(fields: [bankId], references: [id], onDelete: Cascade)
+  knowledgePoint   KnowledgePoint @relation(fields: [knowledgePointId], references: [id], onDelete: Cascade)
+  x                Float
+  y                Float
+  pinned           Boolean        @default(true)
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  @@id([bankId, knowledgePointId])
+  @@map("knowledge_graph_node_layouts")
 }
 
 model ClassroomSession {
