@@ -93,7 +93,23 @@ function buildBankWhere(filters = {}) {
   return where;
 }
 
-export function createQuestionBankService(prisma) {
+export function createQuestionBankService(prisma, { questionKnowledgeGraphService = null } = {}) {
+  async function runGraphHook(method, ...args) {
+    if (!questionKnowledgeGraphService?.[method]) return;
+    try {
+      await questionKnowledgeGraphService[method](...args);
+    } catch (error) {
+      const question = args.at(-1);
+      if (question?.id && question?.bankId && method !== 'handleQuestionArchived') {
+        try {
+          await questionKnowledgeGraphService.queueQuestionExtraction(question.id);
+        } catch {
+          // Question CRUD remains authoritative even when graph synchronization is unavailable.
+        }
+      }
+    }
+  }
+
   return {
     async listBanks(filters = {}) {
       const page = Math.max(Number(filters.page || 1), 1);
@@ -192,6 +208,7 @@ export function createQuestionBankService(prisma) {
           accuracy: Number.isFinite(Number(payload.accuracy)) ? Number(payload.accuracy) : null
         }
       });
+      await runGraphHook('handleQuestionCreated', question);
       return normalizeQuestion(question);
     },
 
@@ -215,6 +232,7 @@ export function createQuestionBankService(prisma) {
       if ('type' in data && !data.type) throw createHttpError(400, 'BAD_REQUEST', '题型不能为空');
 
       const question = await prisma.question.update({ where: { id: questionId }, data });
+      await runGraphHook('handleQuestionUpdated', existing, question);
       return normalizeQuestion(question);
     },
 
@@ -225,6 +243,7 @@ export function createQuestionBankService(prisma) {
         where: { id: questionId },
         data: { status: 'archived', deletedAt: new Date() }
       });
+      await runGraphHook('handleQuestionArchived', existing);
       return normalizeQuestion(question);
     }
   };
