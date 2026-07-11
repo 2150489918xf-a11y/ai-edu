@@ -341,6 +341,9 @@ function saveRelation() {
 .soft-btn.danger { color: #a54839; }
 
 @media (max-width: 1080px) {
-  .graph-inspector { max-height: 520px; }
+  .graph-inspector {
+    max-height: none;
+    overflow: visible;
+  }
 }
 </style>

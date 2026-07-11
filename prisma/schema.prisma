@@ -126,7 +126,6 @@ model CourseGroup {
   subject            String
   grade              String
   description        String?
-  knowledgeGraph     Json?                          @map("knowledge_graph")
   status             String                         @default("active")
   deletedAt          DateTime?                      @map("deleted_at")
   units              Course[]

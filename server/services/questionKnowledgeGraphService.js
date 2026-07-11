@@ -54,8 +54,14 @@ function semanticQuestionChanged(before = {}, after = {}) {
 
 function pointIndex(points) {
   const index = new Map();
+
   for (const point of points) {
-    const keys = [point.canonicalKey, point.name, ...normalizeArray(point.aliases)]
+    const key = canonicalKnowledgeKey(point.canonicalKey);
+    if (key) index.set(key, point);
+  }
+
+  for (const point of points) {
+    const keys = [point.name, ...normalizeArray(point.aliases)]
       .map(canonicalKnowledgeKey)
       .filter(Boolean);
     for (const key of keys) {
@@ -168,12 +174,18 @@ export function createQuestionKnowledgeGraphService(prisma, { aiQuestionKnowledg
 
       if (point) {
         if (!point.manualLocked) {
+          const matchedCanonicalKey = canonicalKnowledgeKey(point.canonicalKey || point.name);
+          const matchedByAlias = Boolean(matchedCanonicalKey && matchedCanonicalKey !== key);
           point = await client.knowledgePoint.update({
             where: { id: point.id },
             data: {
-              name: extracted.name || point.name,
-              canonicalKey: key,
-              aliases: uniqueText([...normalizeArray(point.aliases), ...normalizeArray(extracted.aliases)]),
+              name: matchedByAlias ? point.name : extracted.name || point.name,
+              canonicalKey: point.canonicalKey || key,
+              aliases: uniqueText([
+                ...normalizeArray(point.aliases),
+                ...normalizeArray(extracted.aliases),
+                ...(matchedByAlias && extracted.name ? [extracted.name] : [])
+              ]),
               category: normalizeText(extracted.category) || point.category,
               description: normalizeText(extracted.description) || point.description,
               source: point.source === 'manual' ? point.source : source,
@@ -199,9 +211,11 @@ export function createQuestionKnowledgeGraphService(prisma, { aiQuestionKnowledg
       }
 
       selected.push({ point, extracted });
-      for (const aliasKey of [point.canonicalKey, point.name, ...normalizeArray(point.aliases)]) {
+      const pointCanonicalKey = canonicalKnowledgeKey(point.canonicalKey || point.name);
+      if (pointCanonicalKey) index.set(pointCanonicalKey, point);
+      for (const aliasKey of [point.name, ...normalizeArray(point.aliases)]) {
         const normalizedKey = canonicalKnowledgeKey(aliasKey);
-        if (normalizedKey) index.set(normalizedKey, point);
+        if (normalizedKey && !index.has(normalizedKey)) index.set(normalizedKey, point);
       }
     }
 

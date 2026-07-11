@@ -1,5 +1,6 @@
 import { loadEnvFile } from '../server/env.js';
 import { hashPassword } from '../server/services/authService.js';
+import { backfillQuestionBankKnowledgeGraph } from './backfillQuestionBankKnowledgeGraph.js';
 
 loadEnvFile();
 
@@ -508,6 +509,7 @@ async function main() {
   await upsertClassesAndStudents();
   await upsertCourseGroups();
   await upsertCoursesAndQuestions();
+  await backfillQuestionBankKnowledgeGraph(prisma);
   await upsertClassSessions();
   await upsertEnrollments();
   await upsertCourseGroupEnrollments();

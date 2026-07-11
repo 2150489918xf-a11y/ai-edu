@@ -68,6 +68,74 @@ try {
   assert.ok(!afterUpdate.nodes.some((node) => node.label === '合外力'));
   assert.equal(afterUpdate.stats.questionCount, 1);
 
+  const aliasPointId = `000-alias-point-${suffix}`;
+  const exactPointId = `zzz-exact-point-${suffix}`;
+  await prisma.knowledgePoint.create({
+    data: {
+      id: aliasPointId,
+      bankId: bank.id,
+      name: 'Force composition',
+      canonicalKey: 'forcecomposition',
+      aliases: ['resultant-force'],
+      source: 'ai'
+    }
+  });
+  await prisma.knowledgePoint.create({
+    data: {
+      id: exactPointId,
+      bankId: bank.id,
+      name: 'Resultant force',
+      canonicalKey: 'resultantforce',
+      source: 'ai'
+    }
+  });
+
+  const exactMatchQuestion = await questionBankService.createQuestion(bank.id, {
+    type: 'blank',
+    difficulty: 'basic',
+    title: 'Canonical keys take priority over aliases',
+    answer: 'resultant force',
+    knowledge: ['Force composition', 'resultant-force']
+  });
+  const exactMatchLinks = await prisma.questionKnowledgePoint.findMany({
+    where: {
+      questionId: exactMatchQuestion.id,
+      knowledgePoint: { bankId: bank.id }
+    },
+    select: { knowledgePointId: true }
+  });
+  assert.deepEqual(
+    exactMatchLinks.map((link) => link.knowledgePointId).sort(),
+    [aliasPointId, exactPointId].sort()
+  );
+
+  const aliasOnlyPointId = `alias-only-point-${suffix}`;
+  await prisma.knowledgePoint.create({
+    data: {
+      id: aliasOnlyPointId,
+      bankId: bank.id,
+      name: 'Free-body diagram',
+      canonicalKey: 'freebodydiagram',
+      aliases: ['force-analysis'],
+      source: 'ai'
+    }
+  });
+  const aliasMatchQuestion = await questionBankService.createQuestion(bank.id, {
+    type: 'blank',
+    difficulty: 'basic',
+    title: 'Aliases reuse a stable canonical node',
+    answer: 'diagram',
+    knowledge: ['force-analysis']
+  });
+  const aliasOnlyPoint = await prisma.knowledgePoint.findUnique({ where: { id: aliasOnlyPointId } });
+  assert.equal(aliasOnlyPoint.canonicalKey, 'freebodydiagram');
+  assert.equal(
+    await prisma.questionKnowledgePoint.count({
+      where: { questionId: aliasMatchQuestion.id, knowledgePointId: aliasOnlyPointId }
+    }),
+    1
+  );
+
   console.log('question knowledge graph database tests passed');
 } finally {
   if (createdBankId) {

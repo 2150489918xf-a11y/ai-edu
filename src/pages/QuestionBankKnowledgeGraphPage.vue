@@ -414,7 +414,7 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 14px;
-  height: calc(100vh - 56px);
+  height: 100%;
   min-height: 0;
   overflow: hidden;
   padding: 0 2px 14px;
@@ -549,7 +549,15 @@ onBeforeUnmount(() => {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 1180px) {
-  .question-graph-page { height: auto; overflow: visible; }
+  .question-graph-page {
+    grid-template-rows: auto auto auto auto;
+    align-content: start;
+    height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  .question-graph-page::-webkit-scrollbar { display: none; }
   .graph-toolbar { flex-wrap: wrap; }
   .graph-workspace { grid-template-columns: 1fr; }
   .graph-canvas-card { height: 680px; }

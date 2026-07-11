@@ -7,6 +7,7 @@ import {
   newtonStudentProfiles
 } from '../src/data/teachingMockData.js';
 import { hashPassword } from '../server/services/authService.js';
+import { backfillQuestionBankKnowledgeGraph } from './backfillQuestionBankKnowledgeGraph.js';
 
 loadEnvFile();
 
@@ -294,6 +295,8 @@ async function seed() {
       });
     }
   }
+
+  await backfillQuestionBankKnowledgeGraph(prisma, { bankId: 'newton-laws-bank' });
 
   await prisma.classroomSession.create({
     data: {
