@@ -993,7 +993,8 @@ h1 {
   gap: 10px;
 }
 
-.new-group-btn {
+.new-group-btn,
+.delete-group-mode-btn {
   display: inline-flex;
   height: 40px;
   align-items: center;
@@ -1005,6 +1006,12 @@ h1 {
   padding: 0 14px;
   font-size: 13px;
   font-weight: 800;
+}
+
+.delete-group-mode-btn.active {
+  border-color: rgba(165, 72, 57, .24);
+  background: rgba(216, 111, 114, .12);
+  color: #a54839;
 }
 
 .module-head p {
@@ -1093,35 +1100,62 @@ h1 {
 
 .course-group-chip {
   display: inline-flex;
+  height: 44px;
   flex: 0 0 auto;
   align-items: center;
-  gap: .375rem;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .72);
+  color: var(--muted);
+  transition: border-color .18s ease, background .18s ease, color .18s ease;
 }
 
-.course-group-filter button {
+.course-group-filter > button,
+.course-group-select {
   display: inline-flex;
   height: 44px;
   flex: 0 0 auto;
   align-items: center;
   gap: 8px;
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: 999px;
-  background: rgba(255, 255, 255, .72);
-  color: var(--muted);
+  background: transparent;
+  color: inherit;
   padding: 0 14px;
   font-size: 13px;
   font-weight: 700;
 }
 
+.course-group-filter > button {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, .72);
+  color: var(--muted);
+}
+
+.course-group-chip.active {
+  border-color: rgba(47, 172, 102, .44);
+  background: var(--deep);
+  color: white;
+}
+
+.course-group-chip.deleting .course-group-select {
+  padding-right: 8px;
+}
+
 .course-group-filter .course-group-delete {
   width: 44px;
   min-width: 44px;
+  height: 44px;
+  border: 0;
+  border-left: 1px solid rgba(165, 72, 57, .12);
+  border-radius: 0;
+  background: transparent;
   padding: 0;
   color: #a54839;
 }
 
 .course-group-filter .course-group-delete:hover:not(:disabled) {
-  border-color: rgba(165, 72, 57, .28);
   background: rgba(216, 111, 114, .12);
 }
 
@@ -1139,13 +1173,14 @@ h1 {
   font-size: 1.125rem;
 }
 
-.course-group-filter button.active {
+.course-group-filter > button.active {
   border-color: rgba(47, 172, 102, .44);
   background: var(--deep);
   color: white;
 }
 
-.course-group-filter button span {
+.course-group-filter > button > span,
+.course-group-select > span {
   display: inline-flex;
   min-width: 22px;
   height: 22px;

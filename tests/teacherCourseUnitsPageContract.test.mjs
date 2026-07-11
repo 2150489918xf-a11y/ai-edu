@@ -16,6 +16,8 @@ assert.ok(adapterSource.includes('groupTitle') && adapterSource.includes('groupI
 assert.ok(courseServiceSource.includes('resolveCourseGroupId') && courseServiceSource.includes('include:') && courseServiceSource.includes('group:'), 'course service should return and resolve course group metadata');
 assert.ok(courseServiceSource.includes('createCourseGroup') && courseServiceSource.includes('listCourseGroups'), 'course service should support course group creation and listing');
 assert.ok(coursesSource.includes('confirmDeleteGroup') && coursesSource.includes('deleteCourseGroup'), 'teacher course page should delete empty course groups');
+assert.ok(coursesSource.includes('const groupDeleteMode = ref(false)') && coursesSource.includes("groupDeleteMode ? '完成删除' : '删除分组'"), 'teacher course page should expose an explicit group delete mode');
+assert.ok(coursesSource.includes('v-if="groupDeleteMode"') && coursesSource.includes('course-group-select'), 'group delete icons should stay hidden and render inline only in delete mode');
 assert.ok(coursesSource.includes('confirmDeleteCourse') && coursesSource.includes('deleteCoursePermanently'), 'teacher course page should permanently delete course units');
 assert.ok(coursesSource.includes('永久删除') && coursesSource.includes('group.count > 0'), 'teacher course page should expose destructive copy and disable deletion for non-empty groups');
 assert.ok(coursesSource.includes('unitCount: group.unitCount'), 'group deletion guard should use the server total including archived units');

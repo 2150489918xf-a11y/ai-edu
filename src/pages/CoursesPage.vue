@@ -24,6 +24,7 @@ const selectedGroupId = ref('all');
 const selectedCourseId = ref('');
 const showCreateDialog = ref(false);
 const showCreateGroupDialog = ref(false);
+const groupDeleteMode = ref(false);
 const createForm = ref({
   groupId: '',
   title: '',
@@ -316,6 +317,17 @@ onMounted(loadCourses);
           <span class="material-symbols-outlined">create_new_folder</span>
           新建课程分组
         </button>
+        <button
+          class="delete-group-mode-btn"
+          :class="{ active: groupDeleteMode }"
+          type="button"
+          :disabled="loading"
+          :aria-pressed="groupDeleteMode"
+          @click="groupDeleteMode = !groupDeleteMode"
+        >
+          <span class="material-symbols-outlined">{{ groupDeleteMode ? 'done' : 'folder_delete' }}</span>
+          {{ groupDeleteMode ? '完成删除' : '删除分组' }}
+        </button>
         <button class="new-course-btn" type="button" :disabled="loading" @click="openCreateDialog">
           <span class="material-symbols-outlined">add</span>
           新建备课单元
@@ -358,22 +370,24 @@ onMounted(loadCourses);
         v-for="group in courseGroups"
         :key="group.id"
         class="course-group-chip"
+        :class="{ active: selectedGroupId === group.id, deleting: groupDeleteMode }"
       >
         <button
+          class="course-group-select"
           type="button"
-          :class="{ active: selectedGroupId === group.id }"
           @click="selectGroup(group.id)"
         >
           {{ group.title }}
           <span>{{ group.count }}</span>
         </button>
         <button
+          v-if="groupDeleteMode"
           class="course-group-delete"
           type="button"
           :disabled="loading || group.count > 0"
           :title="group.count > 0 ? '请先删除分组下的备课单元' : `删除空分组 ${group.title}`"
           :aria-label="`删除课程分组 ${group.title}`"
-          @click="confirmDeleteGroup(group)"
+          @click.stop="confirmDeleteGroup(group)"
         >
           <span class="material-symbols-outlined">delete</span>
         </button>
