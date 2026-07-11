@@ -66,7 +66,6 @@ const normalizedData = computed(() => {
 });
 
 const focusNodeId = computed(() => {
-  if (props.activeNodeId) return props.activeNodeId;
   return [...normalizedData.value.nodes]
     .sort((left, right) => right.data.questionCount - left.data.questionCount)[0]?.id || '';
 });
@@ -183,6 +182,11 @@ async function renderGraph() {
   await graph.fitCenter(false);
 }
 
+async function refreshGraphState() {
+  if (!graph) return;
+  await graph.draw();
+}
+
 onMounted(() => {
   renderGraph();
   resizeObserver = new ResizeObserver(() => graph?.resize());
@@ -196,10 +200,11 @@ onBeforeUnmount(() => {
   graph = null;
 });
 
+watch(() => props.graphData, renderGraph, { deep: true });
+
 watch(
-  () => [props.graphData, props.activeNodeId, props.activeEdgeId, props.searchText, props.neighborhoodDepth],
-  renderGraph,
-  { deep: true }
+  () => [props.activeNodeId, props.activeEdgeId, props.searchText],
+  refreshGraphState
 );
 </script>
 

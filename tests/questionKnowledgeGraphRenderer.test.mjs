@@ -10,6 +10,14 @@ assert.ok(renderer.includes("emit('layout-change'"));
 assert.ok(renderer.includes('questionCount'));
 assert.ok(renderer.includes('supportCount'));
 assert.ok(renderer.includes('co_occurrence'));
+assert.ok(
+  renderer.includes('refreshGraphState'),
+  'renderer should refresh selected node styles without rebuilding the graph'
+);
+assert.ok(
+  !renderer.includes('props.activeNodeId, props.activeEdgeId, props.searchText, props.neighborhoodDepth],\n  renderGraph'),
+  'changing the active node should not destroy and recreate the graph layout'
+);
 assert.ok(inspector.includes("emit('save-node'"));
 assert.ok(inspector.includes("emit('merge-node'"));
 assert.ok(inspector.includes("emit('create-relation'"));
