@@ -1,6 +1,6 @@
 import { reactive, watch } from 'vue';
 
-const COURSE_CHAT_STORAGE_KEY = 'eduai.mock.courseChats.v2';
+const COURSE_CHAT_STORAGE_KEY = 'eduai.mock.courseChats.v3';
 const CLASSROOM_STORAGE_KEY = 'eduai.mock.classroom';
 
 function readSavedCourseChats() {
@@ -479,7 +479,7 @@ export function getCourse(courseId = store.selectedCourseId) {
 }
 
 export function getOutline(courseId = store.selectedCourseId) {
-  return store.outlines[courseId] || store.outlines['physics-newton-2'];
+  return store.outlines[courseId] || null;
 }
 
 export function getBank(bankId = store.selectedBankId) {
@@ -569,7 +569,6 @@ export function createMockCourse(payload) {
   };
 
   store.courses.unshift(course);
-  store.outlines[id] = { ...store.outlines['physics-newton-2'] };
   store.courseChats[id] = {
     scriptStep: 0,
     messages: []
@@ -651,7 +650,6 @@ export function createOutlineDraftCourse() {
   };
 
   store.courses.unshift(course);
-  store.outlines[id] = { ...store.outlines['physics-newton-2'] };
   store.courseQuestionReferences[id] = [];
   store.classroom.courseId = id;
   store.classroom.selectedQuestionId = null;

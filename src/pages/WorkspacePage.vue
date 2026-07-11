@@ -53,7 +53,7 @@ const newCourseScript = [
 const courseId = computed(() => String(route.params.courseId));
 const course = computed(() => workspaceCourse.value);
 const courseChat = computed(() => getCourseChat(courseId.value));
-const outline = computed(() => getOutline(course.value.id));
+const outline = computed(() => course.value.outline || getOutline(course.value.id));
 const topic = computed(() => course.value.title.match(/《(.+)》/)?.[1] || course.value.shortTitle.split(' ・ ').pop());
 const isNewDraft = computed(() => course.value.isDraft && !course.value.hasOutline);
 const canGenerateOutline = computed(() => !course.value.isDraft || course.value.infoReady);
@@ -163,7 +163,7 @@ async function sendOutlineAgentMessage(text) {
         duration: course.value.duration,
         goal: course.value.goal
       },
-      currentOutline: outline.value,
+      currentOutline: course.value.hasOutline ? outline.value : null,
       messages: history
     });
 
