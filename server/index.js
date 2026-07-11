@@ -25,6 +25,7 @@ loadEnvFile();
 
 const { PrismaClient } = await import('@prisma/client');
 const port = Number(process.env.SERVER_PORT || 3001);
+const host = process.env.SERVER_HOST || '0.0.0.0';
 const prisma = new PrismaClient();
 const learningService = createLearningService(prisma);
 const courseService = createCourseService(prisma);
@@ -64,8 +65,8 @@ const app = createLearningApiApp({
 });
 const server = createServer(app);
 
-server.listen(port, '0.0.0.0', () => {
-  console.log(`EduAI API server listening on http://localhost:${port}`);
+server.listen(port, host, () => {
+  console.log(`EduAI API server listening on http://${host}:${port}`);
   questionKnowledgeWorker.start();
 });
 
