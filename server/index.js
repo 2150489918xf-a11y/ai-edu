@@ -9,6 +9,9 @@ import { createKnowledgeService } from './services/knowledgeService.js';
 import { createAiMindMapService } from './services/aiMindMapService.js';
 import { createAiQuestionService } from './services/aiQuestionService.js';
 import { createAiLessonPlanService } from './services/aiLessonPlanService.js';
+import { createAiQuestionKnowledgeService } from './services/aiQuestionKnowledgeService.js';
+import { createQuestionKnowledgeGraphService } from './services/questionKnowledgeGraphService.js';
+import { createQuestionKnowledgeWorker } from './services/questionKnowledgeWorker.js';
 import { createAiStudentPracticeService } from './services/aiStudentPracticeService.js';
 import { createQuestionBankService } from './services/questionBankService.js';
 import { createStudentService } from './services/studentService.js';
@@ -28,7 +31,6 @@ const courseService = createCourseService(prisma);
 const classService = createClassService(prisma);
 const studentService = createStudentService(prisma);
 const knowledgeService = createKnowledgeService(prisma);
-const questionBankService = createQuestionBankService(prisma);
 const studentLearningService = createStudentLearningService(prisma);
 const studentAnalysisService = createStudentAnalysisService(prisma);
 const authService = createAuthService(prisma);
@@ -36,6 +38,10 @@ const adminService = createAdminService(prisma);
 const aiMindMapService = createAiMindMapService();
 const aiQuestionService = createAiQuestionService();
 const aiLessonPlanService = createAiLessonPlanService();
+const aiQuestionKnowledgeService = createAiQuestionKnowledgeService();
+const questionKnowledgeGraphService = createQuestionKnowledgeGraphService(prisma, { aiQuestionKnowledgeService });
+const questionBankService = createQuestionBankService(prisma, { questionKnowledgeGraphService });
+const questionKnowledgeWorker = createQuestionKnowledgeWorker({ graphService: questionKnowledgeGraphService });
 const aiStudentTutorService = createAiStudentTutorService();
 const aiStudentPracticeService = createAiStudentPracticeService(prisma, { studentAnalysisService });
 const app = createLearningApiApp({
@@ -49,6 +55,7 @@ const app = createLearningApiApp({
   studentAnalysisService,
   knowledgeService,
   questionBankService,
+  questionKnowledgeGraphService,
   aiMindMapService,
   aiQuestionService,
   aiStudentTutorService,
@@ -59,9 +66,11 @@ const server = createServer(app);
 
 server.listen(port, '0.0.0.0', () => {
   console.log(`EduAI API server listening on http://localhost:${port}`);
+  questionKnowledgeWorker.start();
 });
 
 async function shutdown() {
+  await questionKnowledgeWorker.stop();
   server.close(async () => {
     await prisma.$disconnect();
     process.exit(0);

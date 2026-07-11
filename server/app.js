@@ -2,7 +2,7 @@ import { readJsonBody, sendError, sendJson, sendSse, startSse } from './http.js'
 
 function withCors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,PUT,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 }
 
@@ -29,6 +29,7 @@ export function createLearningApiApp({
   studentAnalysisService,
   knowledgeService,
   questionBankService,
+  questionKnowledgeGraphService,
   aiMindMapService,
   aiQuestionService,
   aiStudentTutorService,
@@ -503,6 +504,37 @@ export function createLearningApiApp({
         return;
       }
 
+      const questionBankGraphAnalyzeMatch = path.match(/^\/api\/v1\/question-banks\/([^/]+)\/knowledge-graph\/analyze-pending$/);
+      if (questionKnowledgeGraphService && req.method === 'POST' && questionBankGraphAnalyzeMatch) {
+        const data = await questionKnowledgeGraphService.analyzePending(decodeURIComponent(questionBankGraphAnalyzeMatch[1]));
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      const questionBankGraphReconcileMatch = path.match(/^\/api\/v1\/question-banks\/([^/]+)\/knowledge-graph\/reconcile$/);
+      if (questionKnowledgeGraphService && req.method === 'POST' && questionBankGraphReconcileMatch) {
+        const data = await questionKnowledgeGraphService.reconcileBank(decodeURIComponent(questionBankGraphReconcileMatch[1]));
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      const questionBankGraphMatch = path.match(/^\/api\/v1\/question-banks\/([^/]+)\/knowledge-graph$/);
+      if (questionKnowledgeGraphService && req.method === 'GET' && questionBankGraphMatch) {
+        const data = await questionKnowledgeGraphService.getGraph(decodeURIComponent(questionBankGraphMatch[1]));
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      const questionBankPointDetailMatch = path.match(/^\/api\/v1\/question-banks\/([^/]+)\/knowledge-points\/([^/]+)$/);
+      if (questionKnowledgeGraphService && req.method === 'GET' && questionBankPointDetailMatch) {
+        const data = await questionKnowledgeGraphService.getKnowledgePointDetail(
+          decodeURIComponent(questionBankPointDetailMatch[1]),
+          decodeURIComponent(questionBankPointDetailMatch[2])
+        );
+        sendJson(res, 200, { data });
+        return;
+      }
+
       const questionBankQuestionMatch = path.match(/^\/api\/v1\/question-banks\/([^/]+)\/questions$/);
       if (questionBankService && req.method === 'POST' && questionBankQuestionMatch) {
         const body = await readJsonBody(req);
@@ -574,6 +606,15 @@ export function createLearningApiApp({
           sendJson(res, 200, { data });
           return;
         }
+      }
+
+      const questionKnowledgeRetryMatch = path.match(/^\/api\/v1\/questions\/([^/]+)\/knowledge-extraction\/retry$/);
+      if (questionKnowledgeGraphService && req.method === 'POST' && questionKnowledgeRetryMatch) {
+        const data = await questionKnowledgeGraphService.retryQuestionExtraction(
+          decodeURIComponent(questionKnowledgeRetryMatch[1])
+        );
+        sendJson(res, 200, { data });
+        return;
       }
 
       const questionMatch = path.match(/^\/api\/v1\/questions\/([^/]+)$/);
