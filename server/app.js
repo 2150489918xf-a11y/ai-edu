@@ -518,6 +518,17 @@ export function createLearningApiApp({
         return;
       }
 
+      const questionBankGraphLayoutMatch = path.match(/^\/api\/v1\/question-banks\/([^/]+)\/knowledge-graph\/layout$/);
+      if (questionKnowledgeGraphService && req.method === 'PUT' && questionBankGraphLayoutMatch) {
+        const body = await readJsonBody(req);
+        const data = await questionKnowledgeGraphService.saveLayout(
+          decodeURIComponent(questionBankGraphLayoutMatch[1]),
+          body
+        );
+        sendJson(res, 200, { data });
+        return;
+      }
+
       const questionBankGraphMatch = path.match(/^\/api\/v1\/question-banks\/([^/]+)\/knowledge-graph$/);
       if (questionKnowledgeGraphService && req.method === 'GET' && questionBankGraphMatch) {
         const data = await questionKnowledgeGraphService.getGraph(decodeURIComponent(questionBankGraphMatch[1]));
@@ -525,14 +536,82 @@ export function createLearningApiApp({
         return;
       }
 
-      const questionBankPointDetailMatch = path.match(/^\/api\/v1\/question-banks\/([^/]+)\/knowledge-points\/([^/]+)$/);
-      if (questionKnowledgeGraphService && req.method === 'GET' && questionBankPointDetailMatch) {
-        const data = await questionKnowledgeGraphService.getKnowledgePointDetail(
-          decodeURIComponent(questionBankPointDetailMatch[1]),
-          decodeURIComponent(questionBankPointDetailMatch[2])
+      const questionBankPointCollectionMatch = path.match(/^\/api\/v1\/question-banks\/([^/]+)\/knowledge-points$/);
+      if (questionKnowledgeGraphService && req.method === 'POST' && questionBankPointCollectionMatch) {
+        const body = await readJsonBody(req);
+        const data = await questionKnowledgeGraphService.createKnowledgePoint(
+          decodeURIComponent(questionBankPointCollectionMatch[1]),
+          body
+        );
+        sendJson(res, 201, { data });
+        return;
+      }
+
+      const questionBankPointMergeMatch = path.match(/^\/api\/v1\/question-banks\/([^/]+)\/knowledge-points\/([^/]+)\/merge$/);
+      if (questionKnowledgeGraphService && req.method === 'POST' && questionBankPointMergeMatch) {
+        const body = await readJsonBody(req);
+        const data = await questionKnowledgeGraphService.mergeKnowledgePoint(
+          decodeURIComponent(questionBankPointMergeMatch[1]),
+          decodeURIComponent(questionBankPointMergeMatch[2]),
+          body
         );
         sendJson(res, 200, { data });
         return;
+      }
+
+      const questionBankPointDetailMatch = path.match(/^\/api\/v1\/question-banks\/([^/]+)\/knowledge-points\/([^/]+)$/);
+      if (questionKnowledgeGraphService && questionBankPointDetailMatch) {
+        const bankId = decodeURIComponent(questionBankPointDetailMatch[1]);
+        const pointId = decodeURIComponent(questionBankPointDetailMatch[2]);
+        if (req.method === 'GET') {
+          const data = await questionKnowledgeGraphService.getKnowledgePointDetail(bankId, pointId);
+          sendJson(res, 200, { data });
+          return;
+        }
+        if (req.method === 'PATCH') {
+          const body = await readJsonBody(req);
+          const data = await questionKnowledgeGraphService.updateKnowledgePoint(bankId, pointId, body);
+          sendJson(res, 200, { data });
+          return;
+        }
+        if (req.method === 'DELETE') {
+          const body = await readJsonBody(req);
+          const data = await questionKnowledgeGraphService.hideOrUnlinkKnowledgePoint(bankId, pointId, {
+            ...body,
+            mode: url.searchParams.get('mode') || body.mode || 'hide'
+          });
+          sendJson(res, 200, { data });
+          return;
+        }
+      }
+
+      const questionBankRelationCollectionMatch = path.match(/^\/api\/v1\/question-banks\/([^/]+)\/knowledge-relations$/);
+      if (questionKnowledgeGraphService && req.method === 'POST' && questionBankRelationCollectionMatch) {
+        const body = await readJsonBody(req);
+        const data = await questionKnowledgeGraphService.createRelation(
+          decodeURIComponent(questionBankRelationCollectionMatch[1]),
+          body
+        );
+        sendJson(res, 201, { data });
+        return;
+      }
+
+      const questionBankRelationMatch = path.match(/^\/api\/v1\/question-banks\/([^/]+)\/knowledge-relations\/([^/]+)$/);
+      if (questionKnowledgeGraphService && questionBankRelationMatch) {
+        const bankId = decodeURIComponent(questionBankRelationMatch[1]);
+        const relationId = decodeURIComponent(questionBankRelationMatch[2]);
+        if (req.method === 'PATCH') {
+          const body = await readJsonBody(req);
+          const data = await questionKnowledgeGraphService.updateRelation(bankId, relationId, body);
+          sendJson(res, 200, { data });
+          return;
+        }
+        if (req.method === 'DELETE') {
+          const body = await readJsonBody(req);
+          const data = await questionKnowledgeGraphService.deleteRelation(bankId, relationId, body);
+          sendJson(res, 200, { data });
+          return;
+        }
       }
 
       const questionBankQuestionMatch = path.match(/^\/api\/v1\/question-banks\/([^/]+)\/questions$/);

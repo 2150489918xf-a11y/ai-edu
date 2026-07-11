@@ -33,6 +33,30 @@ function createGraphService() {
     },
     async retryQuestionExtraction(questionId) {
       return { questionId, status: 'pending' };
+    },
+    async createKnowledgePoint(bankId, payload) {
+      return { id: 'point-new', bankId, name: payload.name, graphRevision: 4 };
+    },
+    async updateKnowledgePoint(bankId, pointId, payload) {
+      return { id: pointId, bankId, name: payload.name, graphRevision: 5 };
+    },
+    async mergeKnowledgePoint(bankId, pointId, payload) {
+      return { id: pointId, bankId, mergedIntoId: payload.targetPointId, graphRevision: 6 };
+    },
+    async hideOrUnlinkKnowledgePoint(bankId, pointId, payload) {
+      return { id: pointId, bankId, mode: payload.mode, graphRevision: 7 };
+    },
+    async createRelation(bankId, payload) {
+      return { id: 'relation-new', bankId, label: payload.label, graphRevision: 8 };
+    },
+    async updateRelation(bankId, relationId, payload) {
+      return { id: relationId, bankId, label: payload.label, graphRevision: 9 };
+    },
+    async deleteRelation(bankId, relationId) {
+      return { id: relationId, bankId, deleted: true, graphRevision: 10 };
+    },
+    async saveLayout(bankId) {
+      return { bankId, graphRevision: 11 };
     }
   };
 }
@@ -86,6 +110,52 @@ try {
   });
   assert.equal(retry.response.status, 200);
   assert.equal(retry.payload.data.status, 'pending');
+
+  const createdPoint = await requestJson(baseUrl, '/api/v1/question-banks/bank-1/knowledge-points', {
+    method: 'POST', body: JSON.stringify({ name: '动力学', graphRevision: 3 })
+  });
+  assert.equal(createdPoint.response.status, 201);
+  assert.equal(createdPoint.payload.data.id, 'point-new');
+
+  const updatedPoint = await requestJson(baseUrl, '/api/v1/question-banks/bank-1/knowledge-points/point-1', {
+    method: 'PATCH', body: JSON.stringify({ name: '动力学模型', graphRevision: 4 })
+  });
+  assert.equal(updatedPoint.response.status, 200);
+  assert.equal(updatedPoint.payload.data.name, '动力学模型');
+
+  const mergedPoint = await requestJson(baseUrl, '/api/v1/question-banks/bank-1/knowledge-points/point-1/merge', {
+    method: 'POST', body: JSON.stringify({ targetPointId: 'point-2', graphRevision: 5 })
+  });
+  assert.equal(mergedPoint.response.status, 200);
+  assert.equal(mergedPoint.payload.data.mergedIntoId, 'point-2');
+
+  const hiddenPoint = await requestJson(baseUrl, '/api/v1/question-banks/bank-1/knowledge-points/point-1?mode=hide', {
+    method: 'DELETE', body: JSON.stringify({ graphRevision: 6 })
+  });
+  assert.equal(hiddenPoint.response.status, 200);
+  assert.equal(hiddenPoint.payload.data.mode, 'hide');
+
+  const createdRelation = await requestJson(baseUrl, '/api/v1/question-banks/bank-1/knowledge-relations', {
+    method: 'POST', body: JSON.stringify({ label: '前置', graphRevision: 7 })
+  });
+  assert.equal(createdRelation.response.status, 201);
+
+  const updatedRelation = await requestJson(baseUrl, '/api/v1/question-banks/bank-1/knowledge-relations/relation-1', {
+    method: 'PATCH', body: JSON.stringify({ label: '应用于', graphRevision: 8 })
+  });
+  assert.equal(updatedRelation.response.status, 200);
+  assert.equal(updatedRelation.payload.data.label, '应用于');
+
+  const deletedRelation = await requestJson(baseUrl, '/api/v1/question-banks/bank-1/knowledge-relations/relation-1', {
+    method: 'DELETE', body: JSON.stringify({ graphRevision: 9 })
+  });
+  assert.equal(deletedRelation.response.status, 200);
+
+  const layout = await requestJson(baseUrl, '/api/v1/question-banks/bank-1/knowledge-graph/layout', {
+    method: 'PUT', body: JSON.stringify({ graphRevision: 10, nodes: [] })
+  });
+  assert.equal(layout.response.status, 200);
+  assert.equal(layout.payload.data.graphRevision, 11);
 
   console.log('question knowledge graph API tests passed');
 } finally {
