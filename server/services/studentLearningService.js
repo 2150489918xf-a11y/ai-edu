@@ -424,7 +424,19 @@ export function createStudentLearningService(prisma) {
       const student = await requireStudent(prisma, studentId);
       if (!groupId) throw createHttpError(400, 'BAD_REQUEST', 'missing course group id');
       const buckets = await buildCourseGroupBuckets(prisma, student, studentId);
-      const bucket = buckets.get(groupId);
+      let bucket = buckets.get(groupId);
+      if (!bucket) {
+        const unitCourse = await prisma.course.findFirst({
+          where: {
+            id: groupId,
+            status: 'active',
+            deletedAt: null,
+            groupId: { not: null }
+          },
+          select: { groupId: true }
+        });
+        if (unitCourse?.groupId) bucket = buckets.get(unitCourse.groupId);
+      }
       if (!bucket) throw createHttpError(404, 'NOT_FOUND', 'student course group does not exist');
       const detail = finalizeCourseGroupBucket(bucket);
       return {
