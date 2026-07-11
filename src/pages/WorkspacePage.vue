@@ -1080,8 +1080,8 @@ function handleChatSuggestion(suggestion) {
 }
 
 .ws-outline-row.current .ws-index {
-  background: var(--deep);
-  color: white;
+  background: rgba(235, 247, 240, .82);
+  color: var(--ink);
 }
 
 .ws-index strong {
@@ -1093,7 +1093,7 @@ function handleChatSuggestion(suggestion) {
 }
 
 .ws-outline-row.current .ws-index strong {
-  color: #7df0a0;
+  color: var(--green);
 }
 
 .ws-index span,
