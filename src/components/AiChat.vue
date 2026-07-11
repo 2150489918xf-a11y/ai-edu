@@ -66,6 +66,21 @@ const feedRef = ref(null);
 const voiceDelay = computed(() => props.voiceInput?.delay ?? 1200);
 const voiceTranscript = computed(() => props.voiceInput?.transcript ?? '');
 
+function formatMessageText(value) {
+  if (value === '[object Object]') return 'AI 请求失败，请重试。';
+  if (Array.isArray(value)) return value.map(formatMessageText).filter(Boolean).join('\n');
+  if (value && typeof value === 'object') {
+    return String(
+      value.message ||
+      value.error?.message ||
+      value.content ||
+      value.text ||
+      JSON.stringify(value)
+    );
+  }
+  return String(value || '');
+}
+
 function scrollToBottom() {
   nextTick(() => {
     const feed = feedRef.value;
@@ -75,7 +90,7 @@ function scrollToBottom() {
 }
 
 watch(
-  () => [props.messages.length, props.loading, props.messages.at(-1)?.text],
+  () => [props.messages.length, props.loading, formatMessageText(props.messages.at(-1)?.text)],
   scrollToBottom,
   { flush: 'post' }
 );
@@ -126,7 +141,7 @@ function useSuggestion(suggestion) {
     <div ref="feedRef" class="chat-feed">
       <article
         v-for="(message, index) in messages"
-        :key="message.id ?? `${message.role}-${index}-${message.text}`"
+        :key="message.id ?? `${message.role}-${index}-${formatMessageText(message.text)}`"
         class="message"
         :class="message.role"
       >
@@ -137,7 +152,7 @@ function useSuggestion(suggestion) {
               <span>AI<span v-if="message.time"> ・ {{ message.time }}</span></span>
               <em v-if="message.title">{{ message.title }}</em>
             </div>
-            <p><strong v-if="message.title && !message.proposal">{{ message.title }}：</strong>{{ message.text }}</p>
+            <p><strong v-if="message.title && !message.proposal">{{ message.title }}：</strong>{{ formatMessageText(message.text) }}</p>
             <div v-if="message.proposal" class="proposal">
               <small>{{ typeof message.proposal === 'string' ? '新增 ・ 教师活动' : '改动 ・ 副标题' }}</small>
               <template v-if="typeof message.proposal === 'string'">
@@ -164,7 +179,7 @@ function useSuggestion(suggestion) {
         </template>
 
         <template v-else>
-          {{ message.text }}
+          {{ formatMessageText(message.text) }}
           <span v-if="message.time">王老师 ・ {{ message.time }}</span>
         </template>
       </article>

@@ -31,6 +31,7 @@ export function createLearningApiApp({
   questionBankService,
   questionKnowledgeGraphService,
   aiMindMapService,
+  aiOutlineService,
   aiQuestionService,
   aiStudentTutorService,
   aiStudentPracticeService,
@@ -55,6 +56,17 @@ export function createLearningApiApp({
     try {
       if (req.method === 'GET' && path === '/api/v1/health') {
         sendJson(res, 200, { data: { ok: true } });
+        return;
+      }
+
+      if (
+        aiOutlineService &&
+        req.method === 'POST' &&
+        (path === '/api/outline-agent' || path === '/api/v1/outline-agent')
+      ) {
+        const body = await readJsonBody(req);
+        const data = await aiOutlineService.generateOutlineReply(body);
+        sendJson(res, 200, data);
         return;
       }
 

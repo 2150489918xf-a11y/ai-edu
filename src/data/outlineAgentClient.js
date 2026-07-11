@@ -1,6 +1,17 @@
 function getContentText(value) {
   if (Array.isArray(value)) return value.join('\n');
+  if (value && typeof value === 'object') {
+    return String(value.message || value.error?.message || value.code || JSON.stringify(value));
+  }
   return String(value || '');
+}
+
+function getErrorMessage(payload) {
+  const error = payload?.error;
+  if (typeof error === 'string') return error;
+  if (error?.message) return String(error.message);
+  if (payload?.message) return String(payload.message);
+  return 'AI outline agent request failed';
 }
 
 function normalizeTone(value, fallback = 'default') {
@@ -84,7 +95,7 @@ export async function requestOutlineAgent(payload = {}) {
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(result.error || 'AI outline agent request failed');
+    throw new Error(getErrorMessage(result));
   }
   return result;
 }
