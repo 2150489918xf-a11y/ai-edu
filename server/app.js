@@ -381,6 +381,13 @@ export function createLearningApiApp({
         return;
       }
 
+      const courseGroupMatch = path.match(/^\/api\/v1\/course-groups\/([^/]+)$/);
+      if (courseService && req.method === 'DELETE' && courseGroupMatch) {
+        const data = await courseService.deleteCourseGroup(decodeURIComponent(courseGroupMatch[1]));
+        sendJson(res, 200, { data });
+        return;
+      }
+
       if (knowledgeService && req.method === 'GET' && path === '/api/v1/knowledge-categories') {
         const { page, pageSize } = getPageParams(url.searchParams);
         const result = await knowledgeService.listCategories({
@@ -588,6 +595,13 @@ export function createLearningApiApp({
       const courseRestoreMatch = path.match(/^\/api\/v1\/courses\/([^/]+)\/restore$/);
       if (courseService && req.method === 'POST' && courseRestoreMatch) {
         const data = await courseService.restoreCourse(decodeURIComponent(courseRestoreMatch[1]));
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      const coursePermanentDeleteMatch = path.match(/^\/api\/v1\/courses\/([^/]+)\/permanent$/);
+      if (courseService && req.method === 'DELETE' && coursePermanentDeleteMatch) {
+        const data = await courseService.deleteCoursePermanently(decodeURIComponent(coursePermanentDeleteMatch[1]));
         sendJson(res, 200, { data });
         return;
       }

@@ -57,6 +57,13 @@ export async function createCourseGroup(group) {
   return payload.data;
 }
 
+export async function deleteCourseGroup(groupId) {
+  const payload = await requestJson(`/course-groups/${encodeURIComponent(groupId)}`, {
+    method: 'DELETE'
+  });
+  return payload.data;
+}
+
 export async function createCourse(course) {
   const payload = await requestJson('/courses', {
     method: 'POST',
@@ -88,6 +95,13 @@ export async function generateCourseMindMap(courseId, request = {}) {
 
 export async function archiveCourse(courseId) {
   const payload = await requestJson(`/courses/${encodeURIComponent(courseId)}`, {
+    method: 'DELETE'
+  });
+  return payload.data;
+}
+
+export async function deleteCoursePermanently(courseId) {
+  const payload = await requestJson(`/courses/${encodeURIComponent(courseId)}/permanent`, {
     method: 'DELETE'
   });
   return payload.data;

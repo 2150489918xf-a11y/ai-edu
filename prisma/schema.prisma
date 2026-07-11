@@ -100,6 +100,7 @@ model Course {
   referencedMaterials Json                      @default("[]") @map("referenced_materials")
   outline             Json?
   mindmap             Json?
+  ppt                 Json?
   lessonPlan          Json?                     @map("lesson_plan")
   unitType            String                    @default("lesson") @map("unit_type")
   sortOrder           Int                       @default(0) @map("sort_order")

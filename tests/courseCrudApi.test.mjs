@@ -59,6 +59,14 @@ function createMockCourseService() {
         unitCount: 0
       };
     },
+    async deleteCourseGroup(groupId) {
+      assert.equal(groupId, 'group-empty');
+      return {
+        id: groupId,
+        title: 'Empty Physics Group',
+        deleted: true
+      };
+    },
     async getCourse(courseId) {
       assert.equal(courseId, 'course-newton-2');
       return {
@@ -104,6 +112,15 @@ function createMockCourseService() {
         grade: '高一',
         status: 'active',
         deletedAt: null
+      };
+    },
+    async deleteCoursePermanently(courseId) {
+      assert.equal(courseId, 'course-newton-2');
+      return {
+        id: courseId,
+        title: 'Newton Second Law',
+        deleted: true,
+        deletedQuestions: 3
       };
     }
   };
@@ -181,6 +198,10 @@ try {
   assert.equal(createdGroup.response.status, 201);
   assert.equal(createdGroup.payload.data.id, 'group-physics-grade2');
 
+  const deletedGroup = await requestJson(baseUrl, '/api/v1/course-groups/group-empty', { method: 'DELETE' });
+  assert.equal(deletedGroup.response.status, 200);
+  assert.equal(deletedGroup.payload.data.deleted, true);
+
   const detail = await requestJson(baseUrl, '/api/v1/courses/course-newton-2');
   assert.equal(detail.response.status, 200);
   assert.equal(detail.payload.data.title, '牛顿第二定律');
@@ -199,6 +220,11 @@ try {
   const restored = await requestJson(baseUrl, '/api/v1/courses/course-newton-2/restore', { method: 'POST' });
   assert.equal(restored.response.status, 200);
   assert.equal(restored.payload.data.status, 'active');
+
+  const permanentlyDeleted = await requestJson(baseUrl, '/api/v1/courses/course-newton-2/permanent', { method: 'DELETE' });
+  assert.equal(permanentlyDeleted.response.status, 200);
+  assert.equal(permanentlyDeleted.payload.data.deleted, true);
+  assert.equal(permanentlyDeleted.payload.data.deletedQuestions, 3);
 
   console.log('course CRUD API contracts passed');
 } finally {

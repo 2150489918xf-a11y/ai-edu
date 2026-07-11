@@ -1091,9 +1091,16 @@ h1 {
   padding-bottom: 2px;
 }
 
+.course-group-chip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: .375rem;
+}
+
 .course-group-filter button {
   display: inline-flex;
-  height: 38px;
+  height: 44px;
   flex: 0 0 auto;
   align-items: center;
   gap: 8px;
@@ -1104,6 +1111,32 @@ h1 {
   padding: 0 14px;
   font-size: 13px;
   font-weight: 700;
+}
+
+.course-group-filter .course-group-delete {
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+  color: #a54839;
+}
+
+.course-group-filter .course-group-delete:hover:not(:disabled) {
+  border-color: rgba(165, 72, 57, .28);
+  background: rgba(216, 111, 114, .12);
+}
+
+.course-group-filter .course-group-delete:disabled {
+  cursor: not-allowed;
+  opacity: .36;
+}
+
+.course-group-filter .course-group-delete .material-symbols-outlined {
+  min-width: 0;
+  height: auto;
+  background: transparent;
+  padding: 0;
+  font-family: 'Material Symbols Outlined';
+  font-size: 1.125rem;
 }
 
 .course-group-filter button.active {
@@ -1495,6 +1528,11 @@ h1 {
 
 .detail-actions .primary-btn {
   margin-left: auto;
+}
+
+.detail-actions .danger-btn:disabled {
+  cursor: not-allowed;
+  opacity: .5;
 }
 
 .workspace-page {

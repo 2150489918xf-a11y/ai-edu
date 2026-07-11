@@ -33,6 +33,7 @@ function normalizeCourse(course) {
     referencedMaterials: Array.isArray(course.referencedMaterials) ? course.referencedMaterials : [],
     outline: course.outline || null,
     mindmap: course.mindmap || null,
+    ppt: course.ppt || null,
     lessonPlan: course.lessonPlan || null,
     status: course.status,
     deletedAt: course.deletedAt ? course.deletedAt.toISOString() : null,
@@ -194,6 +195,40 @@ export function createCourseService(prisma) {
       return normalizeCourseGroup(group);
     },
 
+    async deleteCourseGroup(groupId) {
+      const group = await prisma.courseGroup.findUnique({
+        where: { id: groupId },
+        include: { _count: { select: { units: true } } }
+      });
+      if (!group) {
+        throw createHttpError(404, 'NOT_FOUND', '课程分组不存在');
+      }
+
+      const unitCount = group._count.units;
+      if (unitCount > 0) {
+        throw createHttpError(409, 'COURSE_GROUP_NOT_EMPTY', '课程分组下仍有备课单元，请先删除备课单元', { unitCount });
+      }
+
+      const deleted = await prisma.courseGroup.deleteMany({
+        where: {
+          id: groupId,
+          units: { none: {} }
+        }
+      });
+      if (deleted.count === 0) {
+        const latestUnitCount = await prisma.course.count({ where: { groupId } });
+        throw createHttpError(409, 'COURSE_GROUP_NOT_EMPTY', '课程分组下仍有备课单元，请先删除备课单元', {
+          unitCount: latestUnitCount
+        });
+      }
+
+      return {
+        id: group.id,
+        title: group.title,
+        deleted: true
+      };
+    },
+
     async listCourses(filters = {}) {
       const page = Math.max(Number(filters.page || 1), 1);
       const pageSize = Math.min(Math.max(Number(filters.pageSize || 20), 1), 100);
@@ -242,6 +277,7 @@ export function createCourseService(prisma) {
           referencedMaterials: Array.isArray(payload.referencedMaterials) ? payload.referencedMaterials : [],
           outline: payload.outline || null,
           mindmap: payload.mindmap || null,
+          ppt: payload.ppt || null,
           lessonPlan: payload.lessonPlan || null,
           unitType: normalizeText(payload.unitType) || 'lesson',
           sortOrder: Number.isFinite(Number(payload.sortOrder)) ? Number(payload.sortOrder) : 0
@@ -284,6 +320,7 @@ export function createCourseService(prisma) {
       if ('referencedMaterials' in payload) data.referencedMaterials = Array.isArray(payload.referencedMaterials) ? payload.referencedMaterials : [];
       if ('outline' in payload) data.outline = payload.outline || null;
       if ('mindmap' in payload) data.mindmap = payload.mindmap || null;
+      if ('ppt' in payload) data.ppt = payload.ppt || null;
       if ('lessonPlan' in payload) data.lessonPlan = payload.lessonPlan || null;
       if ('unitType' in payload) data.unitType = normalizeText(payload.unitType) || 'lesson';
       if ('sortOrder' in payload) data.sortOrder = Number.isFinite(Number(payload.sortOrder)) ? Number(payload.sortOrder) : 0;
@@ -333,6 +370,34 @@ export function createCourseService(prisma) {
       });
 
       return normalizeCourse(course);
+    },
+
+    async deleteCoursePermanently(courseId) {
+      const course = await prisma.course.findUnique({
+        where: { id: courseId },
+        select: { id: true, title: true }
+      });
+      if (!course) {
+        throw createHttpError(404, 'NOT_FOUND', '备课单元不存在');
+      }
+
+      const deletedQuestions = await prisma.$transaction(async (transaction) => {
+        const questionCount = await transaction.question.count({ where: { courseId } });
+        await transaction.question.deleteMany({ where: { courseId } });
+        await transaction.knowledgePoint.updateMany({
+          where: { courseId },
+          data: { parentId: null }
+        });
+        await transaction.course.delete({ where: { id: courseId } });
+        return questionCount;
+      });
+
+      return {
+        id: course.id,
+        title: course.title,
+        deleted: true,
+        deletedQuestions
+      };
     }
   };
 }

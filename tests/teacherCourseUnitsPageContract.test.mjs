@@ -15,5 +15,11 @@ assert.ok(coursesSource.includes('备课单元名称'), 'create dialog should na
 assert.ok(adapterSource.includes('groupTitle') && adapterSource.includes('groupId'), 'course UI adapter should expose group metadata');
 assert.ok(courseServiceSource.includes('resolveCourseGroupId') && courseServiceSource.includes('include:') && courseServiceSource.includes('group:'), 'course service should return and resolve course group metadata');
 assert.ok(courseServiceSource.includes('createCourseGroup') && courseServiceSource.includes('listCourseGroups'), 'course service should support course group creation and listing');
+assert.ok(coursesSource.includes('confirmDeleteGroup') && coursesSource.includes('deleteCourseGroup'), 'teacher course page should delete empty course groups');
+assert.ok(coursesSource.includes('confirmDeleteCourse') && coursesSource.includes('deleteCoursePermanently'), 'teacher course page should permanently delete course units');
+assert.ok(coursesSource.includes('永久删除') && coursesSource.includes('group.count > 0'), 'teacher course page should expose destructive copy and disable deletion for non-empty groups');
+assert.ok(coursesSource.includes('unitCount: group.unitCount'), 'group deletion guard should use the server total including archived units');
+assert.ok(courseServiceSource.includes('deleteCourseGroup') && courseServiceSource.includes('COURSE_GROUP_NOT_EMPTY'), 'course service should reject deletion of non-empty groups');
+assert.ok(courseServiceSource.includes('deleteCoursePermanently') && courseServiceSource.includes('$transaction'), 'course service should permanently delete a unit in a transaction');
 
 console.log('teacher course units page contracts passed');

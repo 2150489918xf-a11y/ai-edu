@@ -2,7 +2,16 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { notify, store } from '../data/mockStore';
-import { archiveCourse, createCourse, createCourseGroup, listCourseGroups, listCourses, restoreCourse } from '../data/courseApiClient';
+import {
+  archiveCourse,
+  createCourse,
+  createCourseGroup,
+  deleteCourseGroup,
+  deleteCoursePermanently,
+  listCourseGroups,
+  listCourses,
+  restoreCourse
+} from '../data/courseApiClient';
 import { mapApiCoursesToUiCourses } from '../data/courseUiAdapter';
 
 const router = useRouter();
@@ -52,7 +61,9 @@ const courseGroups = computed(() => {
       title: group.title,
       subject: group.subject,
       grade: group.grade,
-      count: 0
+      unitCount: group.unitCount,
+      count: Number(group.unitCount || 0),
+      hasServerCount: true
     });
   }
   for (const course of courses.value) {
@@ -63,10 +74,12 @@ const courseGroups = computed(() => {
         title: course.groupTitle,
         subject: course.groupSubject,
         grade: course.groupGrade,
-        count: 0
+        count: 0,
+        hasServerCount: false
       });
     }
-    groupMap.get(id).count += 1;
+    const group = groupMap.get(id);
+    if (!group.hasServerCount) group.count += 1;
   }
   return [...groupMap.values()].sort((a, b) => a.title.localeCompare(b.title, 'zh-Hans-CN'));
 });
@@ -250,6 +263,47 @@ async function toggleArchive() {
   }
 }
 
+async function confirmDeleteGroup(group) {
+  if (group.count > 0) {
+    notify('该课程分组下还有备课单元，请先删除分组内的全部备课单元');
+    return;
+  }
+  if (!window.confirm(`确定永久删除空课程分组“${group.title}”吗？`)) return;
+
+  loading.value = true;
+  try {
+    await deleteCourseGroup(group.id);
+    if (selectedGroupId.value === group.id) selectedGroupId.value = 'all';
+    await loadCourses();
+    notify('空课程分组已删除');
+  } catch (error) {
+    notify(error.message || '课程分组删除失败');
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function confirmDeleteCourse() {
+  if (!selectedCourse.value) return;
+  const course = selectedCourse.value;
+  const confirmed = window.confirm(
+    `确定永久删除备课单元“${course.title}”吗？\n\n对应的 PPT、思维导图、教案、题目、学生作答与学情分析都会一起删除，且无法恢复。`
+  );
+  if (!confirmed) return;
+
+  loading.value = true;
+  try {
+    await deleteCoursePermanently(course.id);
+    selectedCourseId.value = '';
+    await loadCourses();
+    notify('备课单元及关联数据已永久删除');
+  } catch (error) {
+    notify(error.message || '备课单元删除失败');
+  } finally {
+    loading.value = false;
+  }
+}
+
 onMounted(loadCourses);
 </script>
 
@@ -300,16 +354,30 @@ onMounted(loadCourses);
         全部课程
         <span>{{ courses.length }}</span>
       </button>
-      <button
+      <div
         v-for="group in courseGroups"
         :key="group.id"
-        type="button"
-        :class="{ active: selectedGroupId === group.id }"
-        @click="selectGroup(group.id)"
+        class="course-group-chip"
       >
-        {{ group.title }}
-        <span>{{ group.count }}</span>
-      </button>
+        <button
+          type="button"
+          :class="{ active: selectedGroupId === group.id }"
+          @click="selectGroup(group.id)"
+        >
+          {{ group.title }}
+          <span>{{ group.count }}</span>
+        </button>
+        <button
+          class="course-group-delete"
+          type="button"
+          :disabled="loading || group.count > 0"
+          :title="group.count > 0 ? '请先删除分组下的备课单元' : `删除空分组 ${group.title}`"
+          :aria-label="`删除课程分组 ${group.title}`"
+          @click="confirmDeleteGroup(group)"
+        >
+          <span class="material-symbols-outlined">delete</span>
+        </button>
+      </div>
     </section>
 
     <section class="course-layout">
@@ -373,6 +441,7 @@ onMounted(loadCourses);
           <div class="detail-actions">
             <button class="soft-btn" type="button" @click="notify('复制备课单元将在题库 CRUD 后接入')">复制单元</button>
             <button class="soft-btn" type="button" :disabled="loading" @click="toggleArchive">{{ selectedCourse.apiStatus === 'archived' ? '恢复' : '归档' }}</button>
+            <button class="danger-btn" type="button" :disabled="loading" @click="confirmDeleteCourse">永久删除</button>
             <button class="primary-btn" type="button" @click="continueDesign">
               继续设计
               <span class="material-symbols-outlined">arrow_forward</span>

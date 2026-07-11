@@ -5,6 +5,8 @@ import {
   archiveCourse,
   createCourse,
   createCourseGroup,
+  deleteCourseGroup,
+  deleteCoursePermanently,
   generateCourseMindMap,
   getCourse,
   listCourseGroups,
@@ -75,6 +77,11 @@ function listen() {
       return;
     }
 
+    if (req.method === 'DELETE' && url.pathname === '/api/v1/course-groups/group-empty') {
+      sendJson(res, 200, { data: { id: 'group-empty', title: 'Empty Group', deleted: true } });
+      return;
+    }
+
     if (req.method === 'GET' && url.pathname === '/api/v1/courses/course-newton-2') {
       sendJson(res, 200, {
         data: { id: 'course-newton-2', title: 'Newton Second Law', subject: 'Physics', grade: 'Grade 10' }
@@ -132,6 +139,13 @@ function listen() {
       return;
     }
 
+    if (req.method === 'DELETE' && url.pathname === '/api/v1/courses/course-newton-2/permanent') {
+      sendJson(res, 200, {
+        data: { id: 'course-newton-2', title: 'Newton Second Law', deleted: true, deletedQuestions: 3 }
+      });
+      return;
+    }
+
     if (req.method === 'POST' && url.pathname === '/api/v1/courses/course-newton-2/restore') {
       sendJson(res, 200, { data: { id: 'course-newton-2', status: 'active' } });
       return;
@@ -178,6 +192,9 @@ try {
   });
   assert.equal(createdGroup.id, 'group-physics-grade11');
 
+  const deletedGroup = await deleteCourseGroup('group-empty');
+  assert.equal(deletedGroup.deleted, true);
+
   const detail = await getCourse('course-newton-2');
   assert.equal(detail.title, 'Newton Second Law');
 
@@ -213,6 +230,10 @@ try {
   const restored = await restoreCourse('course-newton-2');
   assert.equal(restored.status, 'active');
 
+  const permanentlyDeleted = await deleteCoursePermanently('course-newton-2');
+  assert.equal(permanentlyDeleted.deleted, true);
+  assert.equal(permanentlyDeleted.deletedQuestions, 3);
+
   assert.deepEqual(
     calls.map((item) => `${item.method} ${item.path}`),
     [
@@ -220,11 +241,13 @@ try {
       'POST /api/v1/courses',
       'GET /api/v1/course-groups',
       'POST /api/v1/course-groups',
+      'DELETE /api/v1/course-groups/group-empty',
       'GET /api/v1/courses/course-newton-2',
       'PATCH /api/v1/courses/course-newton-2',
       'POST /api/v1/courses/course-newton-2/mindmap/generate',
       'DELETE /api/v1/courses/course-newton-2',
-      'POST /api/v1/courses/course-newton-2/restore'
+      'POST /api/v1/courses/course-newton-2/restore',
+      'DELETE /api/v1/courses/course-newton-2/permanent'
     ]
   );
 
