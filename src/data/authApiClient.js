@@ -1,3 +1,5 @@
+import { clearAllApiCaches } from './apiCache.js';
+
 const TOKEN_KEY = 'eduai_auth_token';
 const USER_KEY = 'eduai_auth_user';
 
@@ -47,12 +49,14 @@ export function getStoredAuthUser() {
 export function setAuthSession(session) {
   const storage = getStorage();
   if (!storage) return;
+  clearAllApiCaches();
   storage.setItem(TOKEN_KEY, session.token || '');
   storage.setItem(USER_KEY, JSON.stringify({ user: session.user, profile: session.profile }));
 }
 
 export function logout() {
   const storage = getStorage();
+  clearAllApiCaches();
   if (!storage) return;
   storage.removeItem(TOKEN_KEY);
   storage.removeItem(USER_KEY);

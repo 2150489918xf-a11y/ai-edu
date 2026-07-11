@@ -1,4 +1,7 @@
+import { cachedApiRequest, clearApiCacheNamespace, stableCacheKey } from './apiCache.js';
 import { getAuthToken } from './authApiClient.js';
+
+const STUDENT_CACHE_NAMESPACE = 'student';
 
 function getApiBaseUrl() {
   if (globalThis.__EDUAI_API_BASE_URL__) return globalThis.__EDUAI_API_BASE_URL__;
@@ -36,6 +39,19 @@ async function requestJson(path, options = {}) {
   return payload.data;
 }
 
+function cachedRequestJson(path, options = {}) {
+  return cachedApiRequest(
+    STUDENT_CACHE_NAMESPACE,
+    stableCacheKey({ baseUrl: getApiBaseUrl(), auth: Boolean(getAuthToken()), path }),
+    () => requestJson(path),
+    options
+  );
+}
+
+export function clearStudentApiCache() {
+  clearApiCacheNamespace(STUDENT_CACHE_NAMESPACE);
+}
+
 function parseSseFrame(frame) {
   const eventLine = frame.split(/\r?\n/).find((line) => line.startsWith('event:'));
   const dataLines = frame.split(/\r?\n/).filter((line) => line.startsWith('data:'));
@@ -49,86 +65,96 @@ function parseSseFrame(frame) {
   }
 }
 
-export async function listStudentCourses(studentId) {
-  return requestJson(`/student/courses${buildQuery({ studentId })}`);
+export async function listStudentCourses(studentId, options = {}) {
+  return cachedRequestJson(`/student/courses${buildQuery({ studentId })}`, options);
 }
 
-export async function getStudentDashboard(studentId) {
-  return requestJson(`/student/dashboard${buildQuery({ studentId })}`);
+export async function getStudentDashboard(studentId, options = {}) {
+  return cachedRequestJson(`/student/dashboard${buildQuery({ studentId })}`, options);
 }
 
-export async function getStudentCourseGroups(studentId) {
-  return requestJson(`/student/course-groups${buildQuery({ studentId })}`);
+export async function getStudentCourseGroups(studentId, options = {}) {
+  return cachedRequestJson(`/student/course-groups${buildQuery({ studentId })}`, options);
 }
 
-export async function getStudentCourseGroup(studentId, groupId) {
-  return requestJson(`/student/course-groups/${encodeURIComponent(groupId)}${buildQuery({ studentId })}`);
+export async function getStudentCourseGroup(studentId, groupId, options = {}) {
+  return cachedRequestJson(`/student/course-groups/${encodeURIComponent(groupId)}${buildQuery({ studentId })}`, options);
 }
 
-export async function getStudentAnalysis(studentId) {
-  return requestJson(`/student/analysis${buildQuery({ studentId })}`);
+export async function getStudentAnalysis(studentId, options = {}) {
+  return cachedRequestJson(`/student/analysis${buildQuery({ studentId })}`, options);
 }
 
-export async function getStudentCourseGroupAnalysisOverview(studentId) {
-  return requestJson(`/student/analysis/course-groups${buildQuery({ studentId })}`);
+export async function getStudentCourseGroupAnalysisOverview(studentId, options = {}) {
+  return cachedRequestJson(`/student/analysis/course-groups${buildQuery({ studentId })}`, options);
 }
 
-export async function getStudentCourseGroupAnalysis(studentId, groupId) {
-  return requestJson(`/student/analysis/course-groups/${encodeURIComponent(groupId)}${buildQuery({ studentId })}`);
+export async function getStudentCourseGroupAnalysis(studentId, groupId, options = {}) {
+  return cachedRequestJson(`/student/analysis/course-groups/${encodeURIComponent(groupId)}${buildQuery({ studentId })}`, options);
 }
 
 export async function generateStudentCourseGroupProfile(studentId, groupId) {
-  return requestJson(`/student/analysis/course-groups/${encodeURIComponent(groupId)}/generate`, {
+  const result = await requestJson(`/student/analysis/course-groups/${encodeURIComponent(groupId)}/generate`, {
     method: 'POST',
     body: JSON.stringify({ studentId })
   });
+  clearStudentApiCache();
+  return result;
 }
 
-export async function getStudentCourseAnalysis(studentId, courseId) {
-  return requestJson(`/student/analysis/courses/${encodeURIComponent(courseId)}${buildQuery({ studentId })}`);
+export async function getStudentCourseAnalysis(studentId, courseId, options = {}) {
+  return cachedRequestJson(`/student/analysis/courses/${encodeURIComponent(courseId)}${buildQuery({ studentId })}`, options);
 }
 
 export async function generateStudentCourseProfile(studentId, courseId) {
-  return requestJson(`/student/analysis/courses/${encodeURIComponent(courseId)}/generate`, {
+  const result = await requestJson(`/student/analysis/courses/${encodeURIComponent(courseId)}/generate`, {
     method: 'POST',
     body: JSON.stringify({ studentId })
   });
+  clearStudentApiCache();
+  return result;
 }
 
-export async function listStudentCourseCatalog(studentId) {
-  return requestJson(`/student/course-catalog${buildQuery({ studentId })}`);
+export async function listStudentCourseCatalog(studentId, options = {}) {
+  return cachedRequestJson(`/student/course-catalog${buildQuery({ studentId })}`, options);
 }
 
 export async function joinStudentCourse(studentId, courseId) {
-  return requestJson('/student/courses/join', {
+  const result = await requestJson('/student/courses/join', {
     method: 'POST',
     body: JSON.stringify({ studentId, courseId })
   });
+  clearStudentApiCache();
+  return result;
 }
 
-export async function getStudentCourse(studentId, courseId) {
-  return requestJson(`/student/courses/${encodeURIComponent(courseId)}${buildQuery({ studentId })}`);
+export async function getStudentCourse(studentId, courseId, options = {}) {
+  return cachedRequestJson(`/student/courses/${encodeURIComponent(courseId)}${buildQuery({ studentId })}`, options);
 }
 
-export async function getStudentTask(studentId, taskId) {
-  return requestJson(`/student/tasks/${encodeURIComponent(taskId)}${buildQuery({ studentId })}`);
+export async function getStudentTask(studentId, taskId, options = {}) {
+  return cachedRequestJson(`/student/tasks/${encodeURIComponent(taskId)}${buildQuery({ studentId })}`, options);
 }
 
 export async function saveStudentAnswer(studentId, taskId, answer) {
-  return requestJson(`/student/tasks/${encodeURIComponent(taskId)}/answers`, {
+  const result = await requestJson(`/student/tasks/${encodeURIComponent(taskId)}/answers`, {
     method: 'POST',
     body: JSON.stringify({
       studentId,
       ...answer
     })
   });
+  clearStudentApiCache();
+  return result;
 }
 
 export async function submitStudentTask(studentId, taskId) {
-  return requestJson(`/student/tasks/${encodeURIComponent(taskId)}/submit`, {
+  const result = await requestJson(`/student/tasks/${encodeURIComponent(taskId)}/submit`, {
     method: 'POST',
     body: JSON.stringify({ studentId })
   });
+  clearStudentApiCache();
+  return result;
 }
 
 export async function streamStudentPracticeGenerate(courseId, request = {}, handlers = {}) {
@@ -171,6 +197,7 @@ export async function streamStudentPracticeGenerate(courseId, request = {}, hand
       if (parsed.event === 'error') throw new Error(parsed.data.message || 'AI practice stream failed');
     }
   }
+  clearStudentApiCache();
 }
 
 export async function streamStudentAiChat(request = {}, handlers = {}) {

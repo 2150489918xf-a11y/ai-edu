@@ -336,13 +336,13 @@ function backToCourses() {
   router.push({ path: '/student/courses', query: { studentId: studentId.value } });
 }
 
-async function loadOverview() {
+async function loadOverview(options = {}) {
   loading.value = true;
   error.value = '';
   try {
-    overview.value = await getStudentCourseGroupAnalysisOverview(studentId.value);
+    overview.value = await getStudentCourseGroupAnalysisOverview(studentId.value, options);
     if (!selectedCourseId.value && courses.value.length) selectedCourseId.value = courses.value[0].course.id;
-    if (selectedCourseId.value) await loadCourseDetail(selectedCourseId.value);
+    if (selectedCourseId.value) await loadCourseDetail(selectedCourseId.value, options);
   } catch (err) {
     error.value = err.message || '学情分析加载失败';
   } finally {
@@ -350,13 +350,13 @@ async function loadOverview() {
   }
 }
 
-async function loadCourseDetail(courseId) {
+async function loadCourseDetail(courseId, options = {}) {
   if (!courseId) return;
   selectedCourseId.value = courseId;
   detailLoading.value = true;
   detailError.value = '';
   try {
-    courseDetail.value = await getStudentCourseGroupAnalysis(studentId.value, courseId);
+    courseDetail.value = await getStudentCourseGroupAnalysis(studentId.value, courseId, options);
   } catch (err) {
     detailError.value = err.message || '课程学情加载失败';
   } finally {
@@ -370,7 +370,7 @@ async function generateProfile() {
   detailError.value = '';
   try {
     courseDetail.value = await generateStudentCourseGroupProfile(studentId.value, selectedCourseId.value);
-    await loadOverview();
+    await loadOverview({ force: true });
   } catch (err) {
     detailError.value = err.message || 'AI 学生画像生成失败';
   } finally {
@@ -407,7 +407,7 @@ onMounted(loadOverview);
         <h1>{{ overview?.student?.name || '学生' }} 的学习画像</h1>
         <p>{{ overview?.student?.className || '班级' }} · 根据答题记录生成课程画像和练习建议</p>
       </div>
-      <button type="button" class="refresh-btn" :disabled="loading" @click="loadOverview">
+      <button type="button" class="refresh-btn" :disabled="loading" @click="loadOverview({ force: true })">
         <span class="material-symbols-outlined">refresh</span>
         刷新
       </button>
@@ -416,7 +416,7 @@ onMounted(loadOverview);
     <section v-if="error" class="analysis-empty">
       <span class="material-symbols-outlined">error</span>
       <strong>{{ error }}</strong>
-      <button type="button" @click="loadOverview">重新加载</button>
+      <button type="button" @click="loadOverview({ force: true })">重新加载</button>
     </section>
 
     <template v-else>

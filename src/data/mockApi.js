@@ -62,7 +62,8 @@ function matchesSearch(material, keyword) {
 
 export async function getKnowledgeBaseMaterials(filters = {}) {
   try {
-    const categoryResult = await listKnowledgeCategories({ status: 'active', pageSize: 100 });
+    const requestOptions = { force: Boolean(filters.force) };
+    const categoryResult = await listKnowledgeCategories({ status: 'active', pageSize: 100 }, requestOptions);
     const materialResult = await listKnowledgeMaterials({
       categoryId: filters.categoryId && filters.categoryId !== 'all' ? filters.categoryId : undefined,
       type: filters.type && filters.type !== 'all' ? filters.type : undefined,
@@ -70,7 +71,7 @@ export async function getKnowledgeBaseMaterials(filters = {}) {
       keyword: filters.keyword || undefined,
       status: 'active',
       pageSize: 100
-    });
+    }, requestOptions);
     return {
       categories: [
         {

@@ -56,10 +56,10 @@ function parseList(text) {
     .filter(Boolean);
 }
 
-async function loadBank() {
+async function loadBank(options = {}) {
   loading.value = true;
   try {
-    bank.value = await getQuestionBank(route.params.bankId);
+    bank.value = await getQuestionBank(route.params.bankId, options);
   } catch (error) {
     notify(error.message || '题库加载失败');
     bank.value = null;
@@ -92,7 +92,7 @@ async function submitQuestion() {
     });
     showCreateDialog.value = false;
     notify('题目已保存到数据库');
-    await loadBank();
+    await loadBank({ force: true });
   } catch (error) {
     notify(error.message || '题目保存失败');
   }
@@ -106,7 +106,7 @@ async function removeQuestion(question) {
   try {
     await archiveQuestion(question.id);
     notify('题目已删除');
-    await loadBank();
+    await loadBank({ force: true });
   } catch (error) {
     notify(error.message || '题目删除失败');
   } finally {
@@ -165,7 +165,7 @@ watch(() => route.params.bankId, loadBank);
         <span class="material-symbols-outlined">search</span>
         <input v-model="keyword" type="search" placeholder="搜索题干、答案、知识点..." />
       </label>
-      <button class="course-filter" type="button" :disabled="loading" @click="loadBank">
+      <button class="course-filter" type="button" :disabled="loading" @click="loadBank({ force: true })">
         {{ loading ? '加载中' : '刷新' }}
         <span class="material-symbols-outlined">sync</span>
       </button>

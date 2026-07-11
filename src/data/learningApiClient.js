@@ -1,12 +1,21 @@
+import { cachedApiRequest, stableCacheKey } from './apiCache.js';
+
 const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL || '';
+const LEARNING_CACHE_NAMESPACE = 'learning';
 
 async function requestJson(path) {
   if (!API_BASE_URL) return null;
 
   try {
-    const response = await fetch(`${API_BASE_URL}${path}`);
-    if (!response.ok) return null;
-    return await response.json();
+    return await cachedApiRequest(
+      LEARNING_CACHE_NAMESPACE,
+      stableCacheKey({ baseUrl: API_BASE_URL, path }),
+      async () => {
+        const response = await fetch(`${API_BASE_URL}${path}`);
+        if (!response.ok) return null;
+        return response.json();
+      }
+    );
   } catch {
     return null;
   }

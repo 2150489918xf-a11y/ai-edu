@@ -71,14 +71,15 @@ const indexedCount = computed(() => (
 const indexedTotal = computed(() => indexedMaterials.value.length || 1);
 const indexedRatio = computed(() => Math.round((indexedCount.value / indexedTotal.value) * 100));
 
-async function refreshMaterials() {
+async function refreshMaterials(options = {}) {
   loading.value = true;
   const [allResult, result] = await Promise.all([
-    getKnowledgeBaseMaterials({ fast: true }),
+    getKnowledgeBaseMaterials({ fast: true, force: options.force }),
     getKnowledgeBaseMaterials({
       categoryId: activeCategory.value,
       type: activeType.value,
-      keyword: keyword.value
+      keyword: keyword.value,
+      force: options.force
     })
   ]);
   categories.value = result.categories;
@@ -92,12 +93,12 @@ async function refreshMaterials() {
 
 function selectCategory(categoryId) {
   activeCategory.value = categoryId;
-  refreshMaterials();
+  refreshMaterials({ force: true });
 }
 
 function selectType(typeId) {
   activeType.value = typeId;
-  refreshMaterials();
+  refreshMaterials({ force: true });
 }
 
 function openCreateCategory() {
@@ -126,7 +127,7 @@ async function submitCategory() {
       notify('分类已添加');
     }
     categoryDialogOpen.value = false;
-    await refreshMaterials();
+    await refreshMaterials({ force: true });
   } catch (error) {
     notify(error.message || '分类保存失败');
   }
@@ -140,7 +141,7 @@ async function deleteCategory(category) {
       activeCategory.value = 'all';
     }
     notify('分类已删除');
-    await refreshMaterials();
+    await refreshMaterials({ force: true });
   } catch (error) {
     notify(error.message || '分类删除失败');
   }
@@ -233,7 +234,7 @@ async function submitMaterial() {
       notify('资料已添加');
     }
     materialDialogOpen.value = false;
-    await refreshMaterials();
+    await refreshMaterials({ force: true });
     selectedMaterialId.value = material?.id || selectedMaterialId.value;
   } catch (error) {
     notify(error.message || '资料保存失败');
@@ -245,7 +246,7 @@ async function deleteMaterial(material) {
   try {
     await removeKnowledgeMaterial(material.id);
     notify('资料已删除');
-    await refreshMaterials();
+    await refreshMaterials({ force: true });
   } catch (error) {
     notify(error.message || '资料删除失败');
   }
@@ -261,10 +262,10 @@ async function simulateUpload() {
     categoryId: activeCategory.value === 'all' ? 'math-g10' : activeCategory.value
   });
   notify('资料上传成功，开始解析');
-  await refreshMaterials();
+  await refreshMaterials({ force: true });
   selectedMaterialId.value = material.id;
   const parsed = await parseKnowledgeMaterial(material.id);
-  await refreshMaterials();
+  await refreshMaterials({ force: true });
   selectedMaterialId.value = parsed?.id || material.id;
   uploading.value = false;
   notify('资料解析完成，已生成 Evidence');
@@ -277,7 +278,7 @@ async function bindSelectedToCourse() {
     courseName: '二次函数图像与性质',
     materialIds: [selectedMaterial.value.id]
   });
-  await refreshMaterials();
+    await refreshMaterials({ force: true });
   selectedMaterialId.value = selectedMaterial.value.id;
   notify('已引用到课程，可用于生成思维导图');
 }
@@ -368,7 +369,7 @@ onMounted(refreshMaterials);
               v-model="keyword"
               type="search"
               placeholder="搜索文件名、知识点、标签..."
-              @keyup.enter="refreshMaterials"
+              @keyup.enter="refreshMaterials({ force: true })"
             />
           </label>
           <div class="segmented">
@@ -390,7 +391,7 @@ onMounted(refreshMaterials);
             Agentic RAG Evidence
           </span>
           <p>模拟 BM25 + 向量召回 + 知识点匹配 + 教学任务权重排序。</p>
-          <button class="soft-btn" type="button" :disabled="loading" @click="refreshMaterials">
+          <button class="soft-btn" type="button" :disabled="loading" @click="refreshMaterials({ force: true })">
             <span class="material-symbols-outlined">refresh</span>
             刷新
           </button>

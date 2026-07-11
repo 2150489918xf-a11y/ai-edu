@@ -1,3 +1,7 @@
+import { cachedApiRequest, clearApiCacheNamespace, stableCacheKey } from './apiCache.js';
+
+const COURSE_CACHE_NAMESPACE = 'course';
+
 function getApiBaseUrl() {
   if (globalThis.__EDUAI_API_BASE_URL__) return globalThis.__EDUAI_API_BASE_URL__;
   return import.meta.env?.VITE_API_BASE_URL || '';
@@ -36,16 +40,29 @@ async function requestJson(path, options = {}) {
   return payload;
 }
 
-export async function listCourses(filters = {}) {
-  const payload = await requestJson(`/courses${buildQuery(filters)}`);
+function cachedRequestJson(path, options = {}) {
+  return cachedApiRequest(
+    COURSE_CACHE_NAMESPACE,
+    stableCacheKey({ baseUrl: getApiBaseUrl(), path }),
+    () => requestJson(path),
+    options
+  );
+}
+
+export function clearCourseApiCache() {
+  clearApiCacheNamespace(COURSE_CACHE_NAMESPACE);
+}
+
+export async function listCourses(filters = {}, options = {}) {
+  const payload = await cachedRequestJson(`/courses${buildQuery(filters)}`, options);
   return {
     data: payload.data || [],
     pagination: payload.pagination || { page: 1, pageSize: 20, total: 0 }
   };
 }
 
-export async function listCourseGroups(filters = {}) {
-  const payload = await requestJson(`/course-groups${buildQuery(filters)}`);
+export async function listCourseGroups(filters = {}, options = {}) {
+  const payload = await cachedRequestJson(`/course-groups${buildQuery(filters)}`, options);
   return payload.data || [];
 }
 
@@ -54,6 +71,7 @@ export async function createCourseGroup(group) {
     method: 'POST',
     body: JSON.stringify(group)
   });
+  clearCourseApiCache();
   return payload.data;
 }
 
@@ -61,6 +79,7 @@ export async function deleteCourseGroup(groupId) {
   const payload = await requestJson(`/course-groups/${encodeURIComponent(groupId)}`, {
     method: 'DELETE'
   });
+  clearCourseApiCache();
   return payload.data;
 }
 
@@ -69,11 +88,12 @@ export async function createCourse(course) {
     method: 'POST',
     body: JSON.stringify(course)
   });
+  clearCourseApiCache();
   return payload.data;
 }
 
-export async function getCourse(courseId) {
-  const payload = await requestJson(`/courses/${encodeURIComponent(courseId)}`);
+export async function getCourse(courseId, options = {}) {
+  const payload = await cachedRequestJson(`/courses/${encodeURIComponent(courseId)}`, options);
   return payload.data;
 }
 
@@ -82,6 +102,7 @@ export async function updateCourse(courseId, patch) {
     method: 'PATCH',
     body: JSON.stringify(patch)
   });
+  clearCourseApiCache();
   return payload.data;
 }
 
@@ -90,6 +111,7 @@ export async function generateCourseMindMap(courseId, request = {}) {
     method: 'POST',
     body: JSON.stringify(request)
   });
+  clearCourseApiCache();
   return payload.data;
 }
 
@@ -97,6 +119,7 @@ export async function archiveCourse(courseId) {
   const payload = await requestJson(`/courses/${encodeURIComponent(courseId)}`, {
     method: 'DELETE'
   });
+  clearCourseApiCache();
   return payload.data;
 }
 
@@ -104,6 +127,7 @@ export async function deleteCoursePermanently(courseId) {
   const payload = await requestJson(`/courses/${encodeURIComponent(courseId)}/permanent`, {
     method: 'DELETE'
   });
+  clearCourseApiCache();
   return payload.data;
 }
 
@@ -111,5 +135,6 @@ export async function restoreCourse(courseId) {
   const payload = await requestJson(`/courses/${encodeURIComponent(courseId)}/restore`, {
     method: 'POST'
   });
+  clearCourseApiCache();
   return payload.data;
 }

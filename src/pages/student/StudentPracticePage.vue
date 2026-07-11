@@ -105,11 +105,11 @@ function fillInitialAnswers(taskPayload) {
   answers.value = nextAnswers;
 }
 
-async function loadTask() {
+async function loadTask(options = {}) {
   loading.value = true;
   error.value = '';
   try {
-    const payload = await getStudentTask(studentId.value, taskId.value);
+    const payload = await getStudentTask(studentId.value, taskId.value, options);
     task.value = payload;
     fillInitialAnswers(payload);
   } catch (err) {
@@ -189,14 +189,14 @@ onMounted(loadTask);
         <strong>{{ task?.course?.title || '答题练习' }}</strong>
         <span>{{ task?.title || '练习任务' }} · {{ answeredCount }}/{{ questions.length }} 已答</span>
       </div>
-      <button type="button" :disabled="loading" @click="loadTask">
+      <button type="button" :disabled="loading" @click="loadTask({ force: true })">
         <span class="material-symbols-outlined">refresh</span>
       </button>
     </header>
 
     <section v-if="error" class="practice-error">
       <strong>{{ error }}</strong>
-      <button type="button" @click="loadTask">重新加载</button>
+      <button type="button" @click="loadTask({ force: true })">重新加载</button>
     </section>
 
     <section v-else class="practice-layout">

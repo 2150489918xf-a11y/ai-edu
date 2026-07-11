@@ -134,17 +134,17 @@ function continueDesign() {
   router.push(`/preclass/courses/${selectedCourse.value.id}/workspace`);
 }
 
-async function loadCourses() {
+async function loadCourses(options = {}) {
   loading.value = true;
   try {
     const [groups, result] = await Promise.all([
-      listCourseGroups({ status: 'active' }),
+      listCourseGroups({ status: 'active' }, options),
       listCourses({
       keyword: keyword.value.trim(),
       status: apiStatus.value,
       page: 1,
       pageSize: 50
-      })
+      }, options)
     ]);
     groupOptions.value = groups;
     courses.value = mapApiCoursesToUiCourses(result.data);
@@ -203,7 +203,7 @@ async function submitNewGroup() {
       description: groupForm.value.description.trim()
     });
     showCreateGroupDialog.value = false;
-    await loadCourses();
+    await loadCourses({ force: true });
     selectGroup(created.id);
     notify('课程分组已创建，可以继续新建备课单元');
   } catch (error) {
@@ -238,7 +238,7 @@ async function submitNewCourse() {
     });
     showCreateDialog.value = false;
     activeTab.value = '进行中';
-    await loadCourses();
+    await loadCourses({ force: true });
     selectCourse(created.id);
     notify('备课单元已保存，进入课件生成详情');
     router.push(`/preclass/courses/${created.id}/workspace`);
@@ -258,7 +258,7 @@ async function toggleArchive() {
       await archiveCourse(selectedCourse.value.id);
       notify('课程已归档');
     }
-    await loadCourses();
+    await loadCourses({ force: true });
   } catch (error) {
     notify(error.message || '课程状态更新失败');
   }
@@ -275,7 +275,7 @@ async function confirmDeleteGroup(group) {
   try {
     await deleteCourseGroup(group.id);
     if (selectedGroupId.value === group.id) selectedGroupId.value = 'all';
-    await loadCourses();
+    await loadCourses({ force: true });
     notify('空课程分组已删除');
   } catch (error) {
     notify(error.message || '课程分组删除失败');
@@ -296,7 +296,7 @@ async function confirmDeleteCourse() {
   try {
     await deleteCoursePermanently(course.id);
     selectedCourseId.value = '';
-    await loadCourses();
+    await loadCourses({ force: true });
     notify('备课单元及关联数据已永久删除');
   } catch (error) {
     notify(error.message || '备课单元删除失败');
@@ -342,16 +342,16 @@ onMounted(loadCourses);
           :key="tab"
           :class="{ active: activeTab === tab }"
           type="button"
-          @click="activeTab = tab"
+          @click="activeTab = tab; loadCourses({ force: true })"
         >
           {{ tab }}
         </button>
       </div>
       <label class="course-search">
         <span class="material-symbols-outlined">search</span>
-        <input v-model="keyword" type="search" placeholder="搜索单元、年级、学科..." @keyup.enter="loadCourses" />
+        <input v-model="keyword" type="search" placeholder="搜索单元、年级、学科..." @keyup.enter="loadCourses({ force: true })" />
       </label>
-      <button class="course-filter" type="button" :disabled="loading" @click="loadCourses">
+      <button class="course-filter" type="button" :disabled="loading" @click="loadCourses({ force: true })">
         {{ loading ? '加载中' : '刷新' }}
         <span class="material-symbols-outlined">refresh</span>
       </button>

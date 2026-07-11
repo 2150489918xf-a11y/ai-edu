@@ -31,14 +31,14 @@ const newtonCount = computed(() => banks.value
   .filter((bank) => `${bank.title} ${bank.description} ${bank.tags?.join(' ')}`.includes('牛顿') || `${bank.title}`.toLowerCase().includes('newton'))
   .reduce((sum, bank) => sum + Number(bank.count || 0), 0));
 
-async function loadBanks() {
+async function loadBanks(options = {}) {
   loading.value = true;
   try {
     const result = await listQuestionBanks({
       keyword: keyword.value.trim(),
       status: activeTab.value === '已归档' ? 'archived' : 'active',
       pageSize: 100
-    });
+    }, options);
     banks.value = result.data;
   } catch (error) {
     notify(error.message || '题库加载失败');
@@ -99,7 +99,7 @@ async function submitBank() {
     });
     bankDialogOpen.value = false;
     notify('题库已保存到数据库');
-    await loadBanks();
+    await loadBanks({ force: true });
     if (created?.id) {
       router.push(`/question-banks/${created.id}`);
     }
@@ -158,16 +158,16 @@ onMounted(loadBanks);
           :key="tab"
           :class="{ active: activeTab === tab }"
           type="button"
-          @click="activeTab = tab; loadBanks()"
+          @click="activeTab = tab; loadBanks({ force: true })"
         >
           {{ tab }}
         </button>
       </div>
       <label class="module-search">
         <span class="material-symbols-outlined">search</span>
-        <input v-model="keyword" type="search" placeholder="搜索题库、知识点..." @keydown.enter="loadBanks" />
+        <input v-model="keyword" type="search" placeholder="搜索题库、知识点..." @keydown.enter="loadBanks({ force: true })" />
       </label>
-      <button class="course-filter" type="button" :disabled="loading" @click="loadBanks">
+      <button class="course-filter" type="button" :disabled="loading" @click="loadBanks({ force: true })">
         {{ loading ? '加载中' : '数据库' }}
         <span class="material-symbols-outlined">database</span>
       </button>

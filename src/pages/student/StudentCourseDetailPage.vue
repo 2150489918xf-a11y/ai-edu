@@ -30,11 +30,11 @@ function openTask(task) {
   });
 }
 
-async function loadCourse() {
+async function loadCourse(options = {}) {
   loading.value = true;
   error.value = '';
   try {
-    course.value = await getStudentCourseGroup(studentId.value, courseId.value);
+    course.value = await getStudentCourseGroup(studentId.value, courseId.value, options);
   } catch (err) {
     error.value = err.message || '课程详情加载失败';
   } finally {
@@ -56,14 +56,14 @@ onMounted(loadCourse);
         <h1>{{ course?.title || '课程详情' }}</h1>
         <p>{{ course?.subject || '学科' }} · {{ course?.grade || '年级' }}</p>
       </div>
-      <button type="button" :disabled="loading" @click="loadCourse">
+      <button type="button" :disabled="loading" @click="loadCourse({ force: true })">
         <span class="material-symbols-outlined">refresh</span>
       </button>
     </header>
 
     <section v-if="error" class="detail-empty">
       <strong>{{ error }}</strong>
-      <button type="button" @click="loadCourse">重新加载</button>
+      <button type="button" @click="loadCourse({ force: true })">重新加载</button>
     </section>
 
     <template v-else>

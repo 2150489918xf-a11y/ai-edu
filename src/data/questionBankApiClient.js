@@ -1,3 +1,7 @@
+import { cachedApiRequest, clearApiCacheNamespace, stableCacheKey } from './apiCache.js';
+
+const QUESTION_BANK_CACHE_NAMESPACE = 'question-bank';
+
 function getApiBaseUrl() {
   if (globalThis.__EDUAI_API_BASE_URL__) return globalThis.__EDUAI_API_BASE_URL__;
   return import.meta.env?.VITE_API_BASE_URL || '';
@@ -32,16 +36,29 @@ async function requestJson(path, options = {}) {
   return payload;
 }
 
-export async function listQuestionBanks(filters = {}) {
-  const payload = await requestJson(`/question-banks${buildQuery(filters)}`);
+function cachedRequestJson(path, options = {}) {
+  return cachedApiRequest(
+    QUESTION_BANK_CACHE_NAMESPACE,
+    stableCacheKey({ baseUrl: getApiBaseUrl(), path }),
+    () => requestJson(path),
+    options
+  );
+}
+
+export function clearQuestionBankApiCache() {
+  clearApiCacheNamespace(QUESTION_BANK_CACHE_NAMESPACE);
+}
+
+export async function listQuestionBanks(filters = {}, options = {}) {
+  const payload = await cachedRequestJson(`/question-banks${buildQuery(filters)}`, options);
   return {
     data: payload.data || [],
     pagination: payload.pagination || { page: 1, pageSize: 20, total: 0 }
   };
 }
 
-export async function getQuestionBank(bankId) {
-  const payload = await requestJson(`/question-banks/${encodeURIComponent(bankId)}`);
+export async function getQuestionBank(bankId, options = {}) {
+  const payload = await cachedRequestJson(`/question-banks/${encodeURIComponent(bankId)}`, options);
   return payload.data;
 }
 
@@ -50,6 +67,7 @@ export async function createQuestionBank(bank) {
     method: 'POST',
     body: JSON.stringify(bank)
   });
+  clearQuestionBankApiCache();
   return payload.data;
 }
 
@@ -58,6 +76,7 @@ export async function createQuestion(bankId, question) {
     method: 'POST',
     body: JSON.stringify(question)
   });
+  clearQuestionBankApiCache();
   return payload.data;
 }
 
@@ -66,6 +85,7 @@ export async function generateAiQuestions(bankId, request = {}) {
     method: 'POST',
     body: JSON.stringify(request)
   });
+  clearQuestionBankApiCache();
   return payload.data;
 }
 
@@ -118,6 +138,7 @@ export async function streamAiQuestions(bankId, request = {}, handlers = {}) {
       if (parsed.event === 'error') throw new Error(parsed.data.message || 'AI stream failed');
     }
   }
+  clearQuestionBankApiCache();
 }
 
 export async function updateQuestion(questionId, patch) {
@@ -125,6 +146,7 @@ export async function updateQuestion(questionId, patch) {
     method: 'PATCH',
     body: JSON.stringify(patch)
   });
+  clearQuestionBankApiCache();
   return payload.data;
 }
 
@@ -132,6 +154,7 @@ export async function archiveQuestion(questionId) {
   const payload = await requestJson(`/questions/${encodeURIComponent(questionId)}`, {
     method: 'DELETE'
   });
+  clearQuestionBankApiCache();
   return payload.data;
 }
 
@@ -140,14 +163,12 @@ function questionBankPath(bankId) {
 }
 
 export async function getQuestionBankKnowledgeGraph(bankId) {
-  const payload = await requestJson(`${questionBankPath(bankId)}/knowledge-graph`);
+  const payload = await cachedRequestJson(`${questionBankPath(bankId)}/knowledge-graph`);
   return payload.data;
 }
 
 export async function getQuestionBankKnowledgePoint(bankId, pointId) {
-  const payload = await requestJson(
-    `${questionBankPath(bankId)}/knowledge-points/${encodeURIComponent(pointId)}`
-  );
+  const payload = await cachedRequestJson(`${questionBankPath(bankId)}/knowledge-points/${encodeURIComponent(pointId)}`);
   return payload.data;
 }
 
@@ -156,6 +177,7 @@ export async function analyzePendingQuestionKnowledge(bankId) {
     method: 'POST',
     body: JSON.stringify({})
   });
+  clearQuestionBankApiCache();
   return payload.data;
 }
 
@@ -164,6 +186,7 @@ export async function reconcileQuestionBankKnowledgeGraph(bankId) {
     method: 'POST',
     body: JSON.stringify({})
   });
+  clearQuestionBankApiCache();
   return payload.data;
 }
 
@@ -172,6 +195,7 @@ export async function retryQuestionKnowledgeExtraction(questionId) {
     `/questions/${encodeURIComponent(questionId)}/knowledge-extraction/retry`,
     { method: 'POST', body: JSON.stringify({}) }
   );
+  clearQuestionBankApiCache();
   return payload.data;
 }
 
@@ -180,6 +204,7 @@ export async function createQuestionBankKnowledgePoint(bankId, point) {
     method: 'POST',
     body: JSON.stringify(point)
   });
+  clearQuestionBankApiCache();
   return payload.data;
 }
 
@@ -188,6 +213,7 @@ export async function updateQuestionBankKnowledgePoint(bankId, pointId, patch) {
     `${questionBankPath(bankId)}/knowledge-points/${encodeURIComponent(pointId)}`,
     { method: 'PATCH', body: JSON.stringify(patch) }
   );
+  clearQuestionBankApiCache();
   return payload.data;
 }
 
@@ -196,6 +222,7 @@ export async function mergeQuestionBankKnowledgePoint(bankId, pointId, request) 
     `${questionBankPath(bankId)}/knowledge-points/${encodeURIComponent(pointId)}/merge`,
     { method: 'POST', body: JSON.stringify(request) }
   );
+  clearQuestionBankApiCache();
   return payload.data;
 }
 
@@ -204,6 +231,7 @@ export async function removeQuestionBankKnowledgePoint(bankId, pointId, mode, re
     `${questionBankPath(bankId)}/knowledge-points/${encodeURIComponent(pointId)}${buildQuery({ mode })}`,
     { method: 'DELETE', body: JSON.stringify(request) }
   );
+  clearQuestionBankApiCache();
   return payload.data;
 }
 
@@ -212,6 +240,7 @@ export async function createQuestionBankKnowledgeRelation(bankId, relation) {
     method: 'POST',
     body: JSON.stringify(relation)
   });
+  clearQuestionBankApiCache();
   return payload.data;
 }
 
@@ -220,6 +249,7 @@ export async function updateQuestionBankKnowledgeRelation(bankId, relationId, pa
     `${questionBankPath(bankId)}/knowledge-relations/${encodeURIComponent(relationId)}`,
     { method: 'PATCH', body: JSON.stringify(patch) }
   );
+  clearQuestionBankApiCache();
   return payload.data;
 }
 
@@ -228,6 +258,7 @@ export async function deleteQuestionBankKnowledgeRelation(bankId, relationId, re
     `${questionBankPath(bankId)}/knowledge-relations/${encodeURIComponent(relationId)}`,
     { method: 'DELETE', body: JSON.stringify(request) }
   );
+  clearQuestionBankApiCache();
   return payload.data;
 }
 
@@ -236,5 +267,6 @@ export async function saveQuestionBankKnowledgeGraphLayout(bankId, request) {
     method: 'PUT',
     body: JSON.stringify(request)
   });
+  clearQuestionBankApiCache();
   return payload.data;
 }

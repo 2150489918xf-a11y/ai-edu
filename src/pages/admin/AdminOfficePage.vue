@@ -76,16 +76,16 @@ function editTeacher(teacher) {
   };
 }
 
-async function loadBaseData() {
+async function loadBaseData(options = {}) {
   loading.value = true;
   error.value = '';
   try {
     const [summaryData, teacherList, classList, studentList, courseList] = await Promise.all([
-      getAdminSummary(),
-      listAdminTeachers({ status: 'active', keyword: teacherKeyword.value, pageSize: 50 }),
-      listAdminClasses({ status: 'active', pageSize: 80 }),
-      listAdminStudents({ status: 'active', keyword: studentKeyword.value, classId: classFilter.value, pageSize: 80 }),
-      listAdminCourses({ status: 'active', pageSize: 100 })
+      getAdminSummary(options),
+      listAdminTeachers({ status: 'active', keyword: teacherKeyword.value, pageSize: 50 }, options),
+      listAdminClasses({ status: 'active', pageSize: 80 }, options),
+      listAdminStudents({ status: 'active', keyword: studentKeyword.value, classId: classFilter.value, pageSize: 80 }, options),
+      listAdminCourses({ status: 'active', pageSize: 100 }, options)
     ]);
     summary.value = summaryData;
     teachers.value = teacherList.data;
@@ -96,7 +96,7 @@ async function loadBaseData() {
       selectedStudentId.value = students.value[0].id;
     }
     if (selectedStudentId.value) {
-      await loadStudentEnrollments(selectedStudentId.value);
+      await loadStudentEnrollments(selectedStudentId.value, options);
     }
   } catch (err) {
     error.value = err.message || '教务数据加载失败';
@@ -105,10 +105,10 @@ async function loadBaseData() {
   }
 }
 
-async function loadStudentEnrollments(studentId) {
+async function loadStudentEnrollments(studentId, options = {}) {
   if (!studentId) return;
   selectedStudentId.value = studentId;
-  enrollmentDetail.value = await getStudentEnrollments(studentId);
+  enrollmentDetail.value = await getStudentEnrollments(studentId, options);
 }
 
 async function saveTeacher() {
@@ -128,7 +128,7 @@ async function saveTeacher() {
       notice.value = '教师账号已创建';
     }
     resetTeacherForm();
-    await loadBaseData();
+    await loadBaseData({ force: true });
   } catch (err) {
     error.value = err.message || '教师保存失败';
   } finally {
@@ -143,7 +143,7 @@ async function archiveTeacher(teacher) {
   try {
     await archiveAdminTeacher(teacher.id);
     notice.value = `已停用 ${teacher.name}`;
-    await loadBaseData();
+    await loadBaseData({ force: true });
   } catch (err) {
     error.value = err.message || '教师停用失败';
   } finally {
@@ -159,7 +159,7 @@ async function assignCourse(course) {
   try {
     await assignStudentCourse(selectedStudentId.value, course.id);
     notice.value = `已给 ${selectedStudent.value?.name || '学生'} 分配《${course.title}》`;
-    await loadBaseData();
+    await loadBaseData({ force: true });
   } catch (err) {
     error.value = err.message || '课程分配失败';
   } finally {
@@ -175,7 +175,7 @@ async function removeCourse(course) {
   try {
     await removeStudentCourse(selectedStudentId.value, course.id);
     notice.value = `已移除《${course.title}》`;
-    await loadBaseData();
+    await loadBaseData({ force: true });
   } catch (err) {
     error.value = err.message || '课程移除失败';
   } finally {
@@ -200,7 +200,7 @@ onMounted(loadBaseData);
         <p>独立管理教师、班级、学生与课程分配，不接入教师端和学生端导航。</p>
       </div>
       <div class="topbar-actions">
-        <button type="button" :disabled="loading" @click="loadBaseData">
+        <button type="button" :disabled="loading" @click="loadBaseData({ force: true })">
           <span class="material-symbols-outlined">refresh</span>
           刷新
         </button>
@@ -234,7 +234,7 @@ onMounted(loadBaseData);
             </div>
             <label class="search-box">
               <span class="material-symbols-outlined">search</span>
-              <input v-model="teacherKeyword" placeholder="搜索教师" @keydown.enter="loadBaseData" />
+              <input v-model="teacherKeyword" placeholder="搜索教师" @keydown.enter="loadBaseData({ force: true })" />
             </label>
           </header>
 
@@ -279,7 +279,7 @@ onMounted(loadBaseData);
               <h2>选择学生后分配课程</h2>
             </div>
             <div class="filter-group">
-              <select v-model="classFilter" @change="loadBaseData">
+              <select v-model="classFilter" @change="loadBaseData({ force: true })">
                 <option value="">全部班级</option>
                 <option v-for="item in classes" :key="item.id" :value="item.id">
                   {{ item.name }}
@@ -287,7 +287,7 @@ onMounted(loadBaseData);
               </select>
               <label class="search-box">
                 <span class="material-symbols-outlined">search</span>
-                <input v-model="studentKeyword" placeholder="搜索学生" @keydown.enter="loadBaseData" />
+                <input v-model="studentKeyword" placeholder="搜索学生" @keydown.enter="loadBaseData({ force: true })" />
               </label>
             </div>
           </header>
@@ -299,7 +299,7 @@ onMounted(loadBaseData);
               type="button"
               class="student-row"
               :class="{ active: student.id === selectedStudentId }"
-              @click="loadStudentEnrollments(student.id)"
+              @click="loadStudentEnrollments(student.id, { force: true })"
             >
               <strong>{{ student.name }}</strong>
               <span>{{ student.className }} · {{ student.studentNo || student.id }}</span>

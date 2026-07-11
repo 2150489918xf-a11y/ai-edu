@@ -42,11 +42,11 @@ function openAnalysis() {
   router.push({ path: '/student/analysis', query: { studentId: studentId.value } });
 }
 
-async function loadDashboard() {
+async function loadDashboard(options = {}) {
   loading.value = true;
   error.value = '';
   try {
-    const dashboard = await getStudentCourseGroups(studentId.value);
+    const dashboard = await getStudentCourseGroups(studentId.value, options);
     student.value = dashboard.student || null;
     courses.value = dashboard.courses || [];
   } catch (err) {
@@ -141,7 +141,7 @@ onMounted(loadDashboard);
     <section v-if="error" class="student-empty">
       <span class="material-symbols-outlined">error</span>
       <strong>{{ error }}</strong>
-      <button type="button" @click="loadDashboard">重新加载</button>
+      <button type="button" @click="loadDashboard({ force: true })">重新加载</button>
     </section>
 
     <section v-else-if="!loading && !courses.length" class="student-empty">

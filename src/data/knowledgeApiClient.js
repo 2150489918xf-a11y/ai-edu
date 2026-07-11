@@ -1,3 +1,7 @@
+import { cachedApiRequest, clearApiCacheNamespace, stableCacheKey } from './apiCache.js';
+
+const KNOWLEDGE_CACHE_NAMESPACE = 'knowledge';
+
 function getApiBaseUrl() {
   if (globalThis.__EDUAI_API_BASE_URL__) return globalThis.__EDUAI_API_BASE_URL__;
   return import.meta.env?.VITE_API_BASE_URL || '';
@@ -36,8 +40,21 @@ async function requestJson(path, options = {}) {
   return payload;
 }
 
-export async function listKnowledgeCategories(filters = {}) {
-  const payload = await requestJson(`/knowledge-categories${buildQuery(filters)}`);
+function cachedRequestJson(path, options = {}) {
+  return cachedApiRequest(
+    KNOWLEDGE_CACHE_NAMESPACE,
+    stableCacheKey({ baseUrl: getApiBaseUrl(), path }),
+    () => requestJson(path),
+    options
+  );
+}
+
+export function clearKnowledgeApiCache() {
+  clearApiCacheNamespace(KNOWLEDGE_CACHE_NAMESPACE);
+}
+
+export async function listKnowledgeCategories(filters = {}, options = {}) {
+  const payload = await cachedRequestJson(`/knowledge-categories${buildQuery(filters)}`, options);
   return {
     data: payload.data || [],
     pagination: payload.pagination || { page: 1, pageSize: 100, total: 0 }
@@ -49,6 +66,7 @@ export async function createKnowledgeCategory(category) {
     method: 'POST',
     body: JSON.stringify(category)
   });
+  clearKnowledgeApiCache();
   return payload.data;
 }
 
@@ -57,6 +75,7 @@ export async function updateKnowledgeCategory(categoryId, patch) {
     method: 'PATCH',
     body: JSON.stringify(patch)
   });
+  clearKnowledgeApiCache();
   return payload.data;
 }
 
@@ -64,11 +83,12 @@ export async function archiveKnowledgeCategory(categoryId) {
   const payload = await requestJson(`/knowledge-categories/${encodeURIComponent(categoryId)}`, {
     method: 'DELETE'
   });
+  clearKnowledgeApiCache();
   return payload.data;
 }
 
-export async function listKnowledgeMaterials(filters = {}) {
-  const payload = await requestJson(`/knowledge-materials${buildQuery(filters)}`);
+export async function listKnowledgeMaterials(filters = {}, options = {}) {
+  const payload = await cachedRequestJson(`/knowledge-materials${buildQuery(filters)}`, options);
   return {
     data: payload.data || [],
     pagination: payload.pagination || { page: 1, pageSize: 20, total: 0 }
@@ -80,11 +100,12 @@ export async function createKnowledgeMaterial(material) {
     method: 'POST',
     body: JSON.stringify(material)
   });
+  clearKnowledgeApiCache();
   return payload.data;
 }
 
-export async function getKnowledgeMaterial(materialId) {
-  const payload = await requestJson(`/knowledge-materials/${encodeURIComponent(materialId)}`);
+export async function getKnowledgeMaterial(materialId, options = {}) {
+  const payload = await cachedRequestJson(`/knowledge-materials/${encodeURIComponent(materialId)}`, options);
   return payload.data;
 }
 
@@ -93,6 +114,7 @@ export async function updateKnowledgeMaterial(materialId, patch) {
     method: 'PATCH',
     body: JSON.stringify(patch)
   });
+  clearKnowledgeApiCache();
   return payload.data;
 }
 
@@ -100,5 +122,6 @@ export async function archiveKnowledgeMaterial(materialId) {
   const payload = await requestJson(`/knowledge-materials/${encodeURIComponent(materialId)}`, {
     method: 'DELETE'
   });
+  clearKnowledgeApiCache();
   return payload.data;
 }
