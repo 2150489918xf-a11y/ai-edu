@@ -40,6 +40,7 @@ assert.ok(analysisSource.includes('compact-metrics') && analysisSource.includes(
 assert.ok(!analysisSource.includes('metric-grid') && !analysisSource.includes('knowledge-panel'), 'student analysis page should not render sparse legacy metric or knowledge panels');
 assert.ok(courseDetailSource.includes('getStudentCourseGroup'), 'student course detail page should load course group tasks');
 assert.ok(courseDetailSource.includes('unit-list') && courseDetailSource.includes('unit-grid'), 'student course detail page should display course units');
+assert.ok(courseDetailSource.includes('height: 100vh') && courseDetailSource.includes('overflow-y: auto'), 'student course detail page should use an internal scroll container');
 assert.ok(practiceSource.includes('getStudentTask'), 'practice page should load task questions');
 assert.ok(practiceSource.includes('streamStudentAiChat'), 'practice page should stream AI tutor replies');
 assert.ok(practiceSource.includes('上一题') && practiceSource.includes('下一题'), 'practice page should support previous and next question navigation');

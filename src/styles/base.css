@@ -180,6 +180,19 @@ button .material-symbols-outlined:not(:only-child) {
   transform: translateY(-2px);
 }
 
+.rail-logout {
+  justify-self: center;
+  border: 1px solid rgba(255, 255, 255, .82);
+  background: rgba(255, 255, 255, .70);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(24px);
+}
+
+.rail-logout:hover {
+  background: rgba(216, 111, 114, .14);
+  color: #a54839;
+}
+
 .rail-btn[data-tip]:hover::after {
   content: attr(data-tip);
   position: absolute;

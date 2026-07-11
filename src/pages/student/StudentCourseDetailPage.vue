@@ -128,13 +128,14 @@ onMounted(loadCourse);
 <style scoped>
 .student-detail-shell {
   width: 100%;
-  min-height: 100vh;
+  height: 100vh;
   overflow-y: auto;
+  overscroll-behavior: contain;
   background:
     radial-gradient(circle at 92% 0%, rgba(81, 201, 135, .18), transparent 28%),
     var(--wash);
   color: var(--ink);
-  padding: 18px;
+  padding: 18px 18px 52px;
 }
 
 .detail-topbar,

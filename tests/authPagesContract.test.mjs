@@ -14,6 +14,7 @@ assert.ok(loginSource.includes('教师登录') && loginSource.includes('学生�
 assert.ok(loginSource.includes('login('), 'login page should call auth API client');
 assert.ok(loginSource.includes('teacher-wang') && loginSource.includes('stu-chenyu') && loginSource.includes('admin-office'), 'login page should provide demo accounts');
 assert.ok(!appSource.includes("to: '/admin'"), 'teacher navigation should not link to admin office');
+assert.ok(appSource.includes('handleTeacherLogout') && appSource.includes("router.replace('/login')"), 'teacher shell should expose logout and return to teacher login');
 assert.ok(authClientSource.includes('/auth/login'), 'auth client should call login endpoint');
 assert.ok(authClientSource.includes('/auth/me'), 'auth client should call current user endpoint');
 assert.ok(authClientSource.includes('localStorage'), 'auth client should persist token locally');

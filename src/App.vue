@@ -1,11 +1,13 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { RouterLink, RouterView, useRoute } from 'vue-router';
+import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
+import { logout } from './data/authApiClient';
 import { store } from './data/mockStore';
 
 const DESIGN_WIDTH = 1440;
 const DESIGN_HEIGHT = 1080;
 const route = useRoute();
+const router = useRouter();
 const scale = ref(1);
 
 const navItems = [
@@ -37,6 +39,11 @@ function isActive(item) {
     return route.path === '/';
   }
   return route.path.startsWith(item.to.split('/').slice(0, 2).join('/'));
+}
+
+function handleTeacherLogout() {
+  logout();
+  router.replace('/login');
 }
 
 onMounted(() => {
@@ -78,6 +85,15 @@ onUnmounted(() => {
               </a>
             </RouterLink>
           </nav>
+          <button
+            type="button"
+            class="rail-btn rail-logout"
+            data-tip="退出登录"
+            aria-label="退出登录"
+            @click="handleTeacherLogout"
+          >
+            <span class="material-symbols-outlined">logout</span>
+          </button>
         </aside>
         <section class="shell-content">
           <RouterView />
