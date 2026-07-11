@@ -48,4 +48,29 @@ assert.ok(
   'lesson plan page should not render the old fixed lesson mock as the generated result'
 );
 
+assert.ok(
+  !/import\s*\{[^}]*\bgetCourse\b[^}]*\}\s*from ['"]\.\.\/data\/mockStore['"]/.test(source),
+  'lesson plan page should not import mockStore course fallback data'
+);
+
+assert.ok(
+  !/import\s*\{[^}]*\bgetOutline\b[^}]*\}\s*from ['"]\.\.\/data\/mockStore['"]/.test(source),
+  'lesson plan page should not import mockStore outline fallback data'
+);
+
+assert.ok(
+  !source.includes('createCourse'),
+  'lesson plan page should not create a database course from fallback mock data'
+);
+
+assert.ok(
+  !source.includes('courseDetail.value ||'),
+  'lesson plan page should render only the database course detail, not fallback mock course detail'
+);
+
+assert.ok(
+  !source.includes('course.value?.lessonPlan'),
+  'lesson plan page should not restore a lesson plan from local fallback course data after API failure'
+);
+
 console.log('lesson plan page streaming checks passed');

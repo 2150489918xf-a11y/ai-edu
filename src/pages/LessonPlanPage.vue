@@ -2,19 +2,18 @@
 import { computed, nextTick, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import AiChat from '../components/AiChat.vue';
-import {
-  createCourse,
-  getCourse as fetchCourseDetail
-} from '../data/courseApiClient';
+import { getCourse as fetchCourseDetail } from '../data/courseApiClient';
 import { getLessonPlanAssistantText, streamLessonPlan } from '../data/lessonPlanAgentClient';
-import { appendCourseChatMessage, getCourse, getCourseChat, getOutline, notify } from '../data/mockStore';
+import { appendCourseChatMessage, getCourseChat, notify } from '../data/mockStore';
 
 const route = useRoute();
 const router = useRouter();
 const courseId = computed(() => String(route.params.courseId));
 const courseDetail = ref(null);
-const course = computed(() => courseDetail.value || getCourse(route.params.courseId));
+const course = computed(() => courseDetail.value);
 const courseChat = computed(() => getCourseChat(courseId.value));
+const courseLoading = ref(false);
+const courseLoadError = ref('');
 
 const draft = ref('');
 const generatingLesson = ref(false);
@@ -31,11 +30,13 @@ const displayMessages = computed(() => messages.value.map((message) => {
   };
 }));
 const lessonGenerated = computed(() => Boolean(generatedLessonPlan.value));
+const courseTitle = computed(() => course.value?.shortTitle || course.value?.title || courseId.value);
+const courseGoal = computed(() => course.value?.goal || '');
 const displayMeta = computed(() => ({
-  grade: generatedLessonPlan.value?.meta?.grade || course.value.grade || '未提供',
-  subject: generatedLessonPlan.value?.meta?.subject || course.value.subject || '未提供',
+  grade: generatedLessonPlan.value?.meta?.grade || course.value?.grade || '未提供',
+  subject: generatedLessonPlan.value?.meta?.subject || course.value?.subject || '未提供',
   textbook: generatedLessonPlan.value?.meta?.textbook || '待 AI 生成',
-  duration: generatedLessonPlan.value?.meta?.duration || course.value.duration || '未提供'
+  duration: generatedLessonPlan.value?.meta?.duration || course.value?.duration || '未提供'
 }));
 const lessonSections = computed(() => generatedLessonPlan.value?.steps || []);
 const lessonSteps = computed(() => lessonSections.value.map((step, index) => ({
@@ -84,10 +85,10 @@ function createEmptyLessonPlan() {
   return {
     version: 'streaming',
     meta: {
-      grade: course.value.grade || '',
-      subject: course.value.subject || '',
+      grade: course.value?.grade || '',
+      subject: course.value?.subject || '',
       textbook: '',
-      duration: course.value.duration || ''
+      duration: course.value?.duration || ''
     },
     objectives: [],
     materials: [],
@@ -128,37 +129,21 @@ function applyLessonPlanEvent(type, payload) {
 
 async function ensureCoursePersisted() {
   try {
-    const detail = await fetchCourseDetail(courseId.value);
+    const detail = await fetchCourseDetail(courseId.value, { force: true });
     courseDetail.value = detail;
+    courseLoadError.value = '';
     return detail;
-  } catch {
-    const current = course.value || {};
-    const created = await createCourse({
-      id: courseId.value,
-      title: current.title || current.shortTitle || courseId.value,
-      subject: current.subject || '未提供',
-      grade: current.grade || '未提供',
-      description: current.summary || current.description || null,
-      duration: current.duration || null,
-      goal: current.goal || null,
-      knowledge: Array.isArray(current.knowledge) ? current.knowledge : [],
-      hasOutline: Boolean(current.hasOutline),
-      progress: Number.isFinite(Number(current.progress)) ? Number(current.progress) : 18,
-      materialUploaded: Boolean(current.materialUploaded),
-      materialName: current.materialName || null,
-      referencedMaterials: Array.isArray(current.referencedMaterials) ? current.referencedMaterials : [],
-      outline: current.outline || getOutline(courseId.value),
-      mindmap: current.mindmap || null,
-      lessonPlan: hasRenderableLessonPlan(generatedLessonPlan.value) ? generatedLessonPlan.value : null
-    });
-    courseDetail.value = created;
-    return created;
+  } catch (error) {
+    courseLoadError.value = error.message || '课程信息加载失败';
+    throw new Error('课程信息加载失败，无法生成教案');
   }
 }
 
 async function loadPersistedLessonPlan() {
+  courseLoading.value = true;
+  courseLoadError.value = '';
   try {
-    const detail = await fetchCourseDetail(courseId.value);
+    const detail = await fetchCourseDetail(courseId.value, { force: true });
     courseDetail.value = detail;
     if (hasRenderableLessonPlan(detail.lessonPlan)) {
       generatedLessonPlan.value = detail.lessonPlan;
@@ -167,11 +152,13 @@ async function loadPersistedLessonPlan() {
       generatedLessonPlan.value = null;
       activeSectionId.value = '';
     }
-  } catch {
-    if (hasRenderableLessonPlan(course.value?.lessonPlan)) {
-      generatedLessonPlan.value = course.value.lessonPlan;
-      activeSectionId.value = course.value.lessonPlan.steps?.[0]?.id || '';
-    }
+  } catch (error) {
+    courseDetail.value = null;
+    generatedLessonPlan.value = null;
+    activeSectionId.value = '';
+    courseLoadError.value = error.message || '课程信息加载失败';
+  } finally {
+    courseLoading.value = false;
   }
 }
 
@@ -273,7 +260,7 @@ function sendCoachMessage(text = draft.value) {
 }
 
 function goBack() {
-  router.push(`/preclass/courses/${course.value.id}/workspace`);
+  router.push(`/preclass/courses/${courseId.value}/workspace`);
 }
 
 onMounted(loadPersistedLessonPlan);
@@ -288,18 +275,18 @@ onMounted(loadPersistedLessonPlan);
       </button>
       <span class="lp-save"><i></i>已自动保存</span>
       <div class="lp-title">
-        <h1>{{ course.shortTitle }}</h1>
+        <h1>{{ courseTitle }}</h1>
         <p>{{ lessonGenerated ? `教案 ・ ${displayMeta.grade}${displayMeta.subject} ・ ${displayMeta.duration}` : '教案尚未生成，将沿用课程大纲和资料上下文。' }}</p>
       </div>
     </header>
 
     <section class="lp-shell" :class="{ 'is-generated': lessonGenerated }">
       <nav class="lp-course-rail" aria-label="课程工作台步骤">
-        <button class="lp-course-step" type="button" @click="router.push(`/preclass/courses/${course.id}/workspace`)">
+        <button class="lp-course-step" type="button" @click="router.push(`/preclass/courses/${courseId}/workspace`)">
           <span class="material-symbols-outlined">auto_awesome</span>
           生成
         </button>
-        <button class="lp-course-step" type="button" @click="router.push(`/preclass/courses/${course.id}/ppt`)">
+        <button class="lp-course-step" type="button" @click="router.push(`/preclass/courses/${courseId}/ppt`)">
           <span class="material-symbols-outlined">desktop_windows</span>
           PPT
         </button>
@@ -307,7 +294,7 @@ onMounted(loadPersistedLessonPlan);
           <span class="material-symbols-outlined">article</span>
           教案
         </button>
-        <button class="lp-course-step" type="button" @click="router.push(`/preclass/courses/${course.id}/analysis`)">
+        <button class="lp-course-step" type="button" @click="router.push(`/preclass/courses/${courseId}/analysis`)">
           <span class="material-symbols-outlined">analytics</span>
           题析
         </button>
@@ -355,13 +342,14 @@ onMounted(loadPersistedLessonPlan);
           <span class="small-chip">AI 教案生成</span>
           <h2>基于课程上下文生成第一版教案</h2>
           <p>系统会沿用前面已经确认的课程目标、上传资料和课程大纲，流式生成教学目标、重点难点、教师活动、学生活动和后续环节。</p>
+          <p v-if="courseLoadError" class="lp-error-text">{{ courseLoadError }}</p>
           <div class="lp-empty-grid">
-            <section><strong>课程目标</strong><span>{{ course.goal || '沿用课程已确认目标' }}</span></section>
+            <section><strong>课程目标</strong><span>{{ courseGoal || '等待数据库返回课程目标' }}</span></section>
             <section><strong>大纲结构</strong><span>根据当前大纲自动判断环节数量</span></section>
             <section><strong>资料依据</strong><span>教材实验要求、课标表述、易错点</span></section>
           </div>
-          <button class="lp-primary" type="button" :disabled="generatingLesson" @click="generateLessonPlan">
-            <span class="material-symbols-outlined">{{ generatingLesson ? 'progress_activity' : 'auto_awesome' }}</span>
+          <button class="lp-primary" type="button" :disabled="generatingLesson || courseLoading || Boolean(courseLoadError)" @click="generateLessonPlan">
+            <span class="material-symbols-outlined">{{ generatingLesson || courseLoading ? 'progress_activity' : 'auto_awesome' }}</span>
             {{ generatingLesson ? '正在生成教案...' : 'AI 生成教案' }}
           </button>
         </article>
@@ -829,6 +817,11 @@ onMounted(loadPersistedLessonPlan);
   color: var(--muted);
   font-size: 14px;
   line-height: 1.72;
+}
+
+.lp-error-text {
+  color: #b42318 !important;
+  font-weight: 750;
 }
 
 .lp-empty-grid {
