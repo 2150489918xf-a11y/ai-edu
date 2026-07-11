@@ -138,6 +138,10 @@ watch(() => route.params.bankId, loadBank);
           <span class="material-symbols-outlined">auto_awesome</span>
           AI 生成题目
         </button>
+        <button class="soft-btn" type="button" :disabled="!bank" @click="router.push(`/question-banks/${bank.id}/knowledge-graph`)">
+          <span class="material-symbols-outlined">hub</span>
+          知识图谱
+        </button>
         <button class="soft-btn" type="button" :disabled="!bank" @click="router.push(`/question-banks/${bank.id}/paper`)">
           <span class="material-symbols-outlined">assignment</span>
           智能组卷

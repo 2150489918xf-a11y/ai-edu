@@ -134,3 +134,107 @@ export async function archiveQuestion(questionId) {
   });
   return payload.data;
 }
+
+function questionBankPath(bankId) {
+  return `/question-banks/${encodeURIComponent(bankId)}`;
+}
+
+export async function getQuestionBankKnowledgeGraph(bankId) {
+  const payload = await requestJson(`${questionBankPath(bankId)}/knowledge-graph`);
+  return payload.data;
+}
+
+export async function getQuestionBankKnowledgePoint(bankId, pointId) {
+  const payload = await requestJson(
+    `${questionBankPath(bankId)}/knowledge-points/${encodeURIComponent(pointId)}`
+  );
+  return payload.data;
+}
+
+export async function analyzePendingQuestionKnowledge(bankId) {
+  const payload = await requestJson(`${questionBankPath(bankId)}/knowledge-graph/analyze-pending`, {
+    method: 'POST',
+    body: JSON.stringify({})
+  });
+  return payload.data;
+}
+
+export async function reconcileQuestionBankKnowledgeGraph(bankId) {
+  const payload = await requestJson(`${questionBankPath(bankId)}/knowledge-graph/reconcile`, {
+    method: 'POST',
+    body: JSON.stringify({})
+  });
+  return payload.data;
+}
+
+export async function retryQuestionKnowledgeExtraction(questionId) {
+  const payload = await requestJson(
+    `/questions/${encodeURIComponent(questionId)}/knowledge-extraction/retry`,
+    { method: 'POST', body: JSON.stringify({}) }
+  );
+  return payload.data;
+}
+
+export async function createQuestionBankKnowledgePoint(bankId, point) {
+  const payload = await requestJson(`${questionBankPath(bankId)}/knowledge-points`, {
+    method: 'POST',
+    body: JSON.stringify(point)
+  });
+  return payload.data;
+}
+
+export async function updateQuestionBankKnowledgePoint(bankId, pointId, patch) {
+  const payload = await requestJson(
+    `${questionBankPath(bankId)}/knowledge-points/${encodeURIComponent(pointId)}`,
+    { method: 'PATCH', body: JSON.stringify(patch) }
+  );
+  return payload.data;
+}
+
+export async function mergeQuestionBankKnowledgePoint(bankId, pointId, request) {
+  const payload = await requestJson(
+    `${questionBankPath(bankId)}/knowledge-points/${encodeURIComponent(pointId)}/merge`,
+    { method: 'POST', body: JSON.stringify(request) }
+  );
+  return payload.data;
+}
+
+export async function removeQuestionBankKnowledgePoint(bankId, pointId, mode, request = {}) {
+  const payload = await requestJson(
+    `${questionBankPath(bankId)}/knowledge-points/${encodeURIComponent(pointId)}${buildQuery({ mode })}`,
+    { method: 'DELETE', body: JSON.stringify(request) }
+  );
+  return payload.data;
+}
+
+export async function createQuestionBankKnowledgeRelation(bankId, relation) {
+  const payload = await requestJson(`${questionBankPath(bankId)}/knowledge-relations`, {
+    method: 'POST',
+    body: JSON.stringify(relation)
+  });
+  return payload.data;
+}
+
+export async function updateQuestionBankKnowledgeRelation(bankId, relationId, patch) {
+  const payload = await requestJson(
+    `${questionBankPath(bankId)}/knowledge-relations/${encodeURIComponent(relationId)}`,
+    { method: 'PATCH', body: JSON.stringify(patch) }
+  );
+  return payload.data;
+}
+
+export async function deleteQuestionBankKnowledgeRelation(bankId, relationId, request = {}) {
+  const payload = await requestJson(
+    `${questionBankPath(bankId)}/knowledge-relations/${encodeURIComponent(relationId)}`,
+    { method: 'DELETE', body: JSON.stringify(request) }
+  );
+  return payload.data;
+}
+
+export async function saveQuestionBankKnowledgeGraphLayout(bankId, request) {
+  const payload = await requestJson(`${questionBankPath(bankId)}/knowledge-graph/layout`, {
+    method: 'PUT',
+    body: JSON.stringify(request)
+  });
+  return payload.data;
+}

@@ -27,6 +27,7 @@ const StudentAiPracticeGeneratePage = () => import('./pages/student/StudentAiPra
 const StudentCourseDetailPage = () => import('./pages/student/StudentCourseDetailPage.vue');
 const StudentCoursesPage = () => import('./pages/student/StudentCoursesPage.vue');
 const StudentPracticePage = () => import('./pages/student/StudentPracticePage.vue');
+const QuestionBankKnowledgeGraphPage = () => import('./pages/QuestionBankKnowledgeGraphPage.vue');
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -53,6 +54,7 @@ export const router = createRouter({
     { path: '/knowledge-base', name: 'knowledge-base', component: KnowledgeBasePage },
     { path: '/question-banks', name: 'question-banks', component: QuestionBanksPage },
     { path: '/question-banks/:bankId', name: 'question-bank-detail', component: QuestionBankDetailPage },
+    { path: '/question-banks/:bankId/knowledge-graph', name: 'question-bank-knowledge-graph', component: QuestionBankKnowledgeGraphPage },
     { path: '/question-banks/:bankId/generate', name: 'question-generate', component: QuestionGeneratePage },
     { path: '/question-banks/:bankId/paper', name: 'paper-generate', component: PaperGeneratePage },
     { path: '/questions/:questionId', name: 'question-detail', component: QuestionDetailPage },
