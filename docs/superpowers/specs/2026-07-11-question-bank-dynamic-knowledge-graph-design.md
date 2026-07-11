@@ -285,6 +285,7 @@ AI 返回结构化数据，而不是 G6 图谱参数：
     "questionCount": 90,
     "analyzedCount": 86,
     "pendingCount": 3,
+    "processingCount": 0,
     "failedCount": 1,
     "nodeCount": 24,
     "edgeCount": 39
@@ -364,7 +365,7 @@ AI 返回结构化数据，而不是 G6 图谱参数：
 
 ### 右侧详情抽屉
 
-节点详情包含：名称、说明、分类、别名、来源、锁定状态、关联题目、相邻关系和操作区。教师可以跳转到关联题目，也可以手动关联或解除关联题目。
+节点详情包含：名称、说明、分类、别名、来源、锁定状态、关联题目、相邻关系和操作区。教师可以跳转到关联题目，也可以手动关联或解除关联题目。关联题目在选中节点后通过独立详情接口按需读取，避免把大量重复题目摘要塞进整张图谱响应。
 
 边详情包含：关系类型、方向、标签、来源、置信度和支持题目数量。自动关系可隐藏，人工关系可编辑或删除。
 
@@ -381,6 +382,7 @@ AI 返回结构化数据，而不是 G6 图谱参数：
 
 ### 节点
 
+- `GET /api/v1/question-banks/:bankId/knowledge-points/:pointId`
 - `PATCH /api/v1/question-banks/:bankId/knowledge-points/:pointId`
 - `POST /api/v1/question-banks/:bankId/knowledge-points`
 - `POST /api/v1/question-banks/:bankId/knowledge-points/:pointId/merge`
