@@ -20,6 +20,11 @@ Object.defineProperty(globalThis.sessionStorage, 'length', {
 try {
   assert.equal(stableCacheKey({ b: 2, a: 1 }), '{"a":1,"b":2}');
 
+  globalThis.sessionStorage.setItem(
+    'eduai.apiCache.v1:cache-test:same-key',
+    JSON.stringify({ savedAt: Date.now(), value: { value: 'stale-v1' } })
+  );
+
   let calls = 0;
   const first = await cachedApiRequest('cache-test', 'same-key', async () => {
     calls += 1;

@@ -1,6 +1,6 @@
 export const DEFAULT_API_CACHE_TTL_MS = 60 * 1000;
 
-const CACHE_PREFIX = 'eduai.apiCache.v1:';
+const CACHE_PREFIX = 'eduai.apiCache.v2:';
 const memoryStorage = new Map();
 
 function getStorage() {

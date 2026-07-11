@@ -305,7 +305,7 @@ async function confirmDeleteCourse() {
   }
 }
 
-onMounted(loadCourses);
+onMounted(() => loadCourses({ force: true }));
 </script>
 
 <template>
