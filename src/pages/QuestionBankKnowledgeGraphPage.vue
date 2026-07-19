@@ -385,6 +385,7 @@ onBeforeUnmount(() => {
         @create-relation="createRelation"
         @save-relation="saveRelation"
         @delete-relation="deleteRelation"
+        @select-relation="selectEdge"
         @open-question="openQuestion"
       />
     </section>

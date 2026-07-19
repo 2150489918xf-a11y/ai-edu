@@ -28,6 +28,10 @@ assert.ok(
 assert.ok(inspector.includes("emit('save-node'"));
 assert.ok(inspector.includes("emit('merge-node'"));
 assert.ok(inspector.includes("emit('create-relation'"));
+assert.ok(inspector.includes("emit('select-relation'"));
+assert.ok(inspector.includes('前置知识'));
+assert.ok(inspector.includes('后续路径'));
+assert.ok(inspector.includes('辅助关系'));
 assert.ok(inspector.includes('关联题目'));
 
 console.log('question knowledge graph renderer contracts passed');
