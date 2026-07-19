@@ -9,7 +9,14 @@ assert.ok(renderer.includes("emit('select-edge'"));
 assert.ok(renderer.includes("emit('layout-change'"));
 assert.ok(renderer.includes('questionCount'));
 assert.ok(renderer.includes('supportCount'));
-assert.ok(renderer.includes('co_occurrence'));
+assert.ok(!renderer.includes('co_occurrence'));
+assert.ok(renderer.includes("type: 'antv-dagre'"));
+assert.ok(renderer.includes("rankdir: 'LR'"));
+assert.ok(renderer.includes('fitView'));
+assert.ok(renderer.includes('prerequisite'));
+assert.ok(renderer.includes('path-highlight'));
+assert.ok(renderer.includes('fit-canvas'));
+assert.ok(!renderer.includes("type: 'radial'"));
 assert.ok(
   renderer.includes('refreshGraphState'),
   'renderer should refresh selected node styles without rebuilding the graph'
