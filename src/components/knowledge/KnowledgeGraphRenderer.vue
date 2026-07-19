@@ -8,7 +8,9 @@ const props = defineProps({
   graphData: { type: Object, default: null },
   activeNodeId: { type: String, default: '' },
   activeEdgeId: { type: String, default: '' },
-  searchText: { type: String, default: '' }
+  searchText: { type: String, default: '' },
+  layoutKey: { type: Number, default: 0 },
+  fitRequest: { type: Number, default: 0 }
 });
 
 const emit = defineEmits(['select-node', 'select-edge', 'layout-change']);
@@ -255,6 +257,8 @@ onBeforeUnmount(() => {
 });
 
 watch(() => props.graphData, renderGraph, { deep: true });
+watch(() => props.layoutKey, renderGraph);
+watch(() => props.fitRequest, () => fitCanvas(true));
 
 watch(
   () => [props.activeNodeId, props.activeEdgeId, props.searchText],

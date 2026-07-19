@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 
 import KnowledgeGraphInspector from '../components/knowledge/KnowledgeGraphInspector.vue';
 import KnowledgeGraphRenderer from '../components/knowledge/KnowledgeGraphRenderer.vue';
+import { projectKnowledgePathGraph } from '../components/knowledge/knowledgePathProjection.js';
 import {
   analyzePendingQuestionKnowledge,
   createQuestionBankKnowledgePoint,
@@ -33,8 +34,8 @@ const error = ref('');
 const searchText = ref('');
 const sourceFilter = ref('all');
 const categoryFilter = ref('all');
-const relationFilter = ref('all');
-const neighborhoodDepth = ref(0);
+const layoutKey = ref(0);
+const fitRequest = ref(0);
 let pollTimer = null;
 let layoutTimer = null;
 const pendingLayouts = new Map();
@@ -55,39 +56,22 @@ const selectedNode = computed(() => nodes.value.find((node) => node.id === selec
 const selectedEdge = computed(() => edges.value.find((edge) => edge.id === selectedEdgeId.value) || null);
 const categories = computed(() => [...new Set(nodes.value.map((node) => node.category).filter(Boolean))].sort());
 const isParsing = computed(() => stats.value.pendingCount + stats.value.processingCount > 0);
+const pathGraph = computed(() => projectKnowledgePathGraph(graphData.value || {}));
+const pathStats = computed(() => pathGraph.value.stats);
 
 const filteredGraphData = computed(() => {
   const query = searchText.value.trim().toLowerCase();
-  let allowed = new Set(nodes.value.filter((node) => {
-    const matchesText = !query || `${node.label} ${node.category} ${(node.aliases || []).join(' ')}`.toLowerCase().includes(query);
+  const visibleNodes = pathGraph.value.nodes.filter((node) => {
+    const text = `${node.label} ${node.category} ${(node.aliases || []).join(' ')}`.toLowerCase();
+    const matchesText = !query || text.includes(query);
     const matchesSource = sourceFilter.value === 'all' || node.source === sourceFilter.value;
     const matchesCategory = categoryFilter.value === 'all' || node.category === categoryFilter.value;
     return matchesText && matchesSource && matchesCategory;
-  }).map((node) => node.id));
-
-  if (selectedNodeId.value && neighborhoodDepth.value > 0) {
-    const neighborhood = new Set([selectedNodeId.value]);
-    let frontier = new Set([selectedNodeId.value]);
-    for (let depth = 0; depth < neighborhoodDepth.value; depth += 1) {
-      const next = new Set();
-      for (const edge of edges.value) {
-        if (frontier.has(edge.source)) next.add(edge.target);
-        if (frontier.has(edge.target)) next.add(edge.source);
-      }
-      for (const id of next) neighborhood.add(id);
-      frontier = next;
-    }
-    allowed = new Set([...allowed].filter((id) => neighborhood.has(id)));
-  }
-
-  const visibleEdges = edges.value.filter((edge) => (
-    allowed.has(edge.source) &&
-    allowed.has(edge.target) &&
-    (relationFilter.value === 'all' || edge.type === relationFilter.value)
-  ));
+  });
+  const visibleIds = new Set(visibleNodes.map((node) => node.id));
   return {
-    nodes: nodes.value.filter((node) => allowed.has(node.id)),
-    edges: visibleEdges
+    nodes: visibleNodes,
+    edges: pathGraph.value.edges.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target))
   };
 });
 
@@ -280,6 +264,14 @@ function resetLayout() {
   }));
 }
 
+function relayoutGraph() {
+  layoutKey.value += 1;
+}
+
+function fitGraph() {
+  fitRequest.value += 1;
+}
+
 function openQuestion(question) {
   if (question?.id) router.push(`/questions/${question.id}`);
 }
@@ -306,9 +298,9 @@ onBeforeUnmount(() => {
           <span class="material-symbols-outlined">arrow_back</span>
           返回题库
         </button>
-        <span class="small-chip"><span class="material-symbols-outlined">hub</span>动态知识图谱</span>
-        <h1>{{ graphData?.bank?.title || '题库知识图谱' }}</h1>
-        <p>由当前题库题目增量提取知识点；新增或删除题目只更新受影响的节点和关系。</p>
+        <span class="small-chip"><span class="material-symbols-outlined">account_tree</span>知识路径图</span>
+        <h1>{{ graphData?.bank?.title || '题库知识路径图' }}</h1>
+        <p>沿着基础知识、核心规律与综合应用查看当前题库的学习路径。</p>
       </div>
       <div class="head-actions">
         <button class="soft-btn" type="button" :disabled="Boolean(savingAction)" @click="addManualPoint">
@@ -324,8 +316,8 @@ onBeforeUnmount(() => {
     <section class="graph-status">
       <div><strong>{{ stats.questionCount }}</strong><span>有效题目</span></div>
       <div><strong>{{ stats.analyzedCount }}</strong><span>已解析</span></div>
-      <div><strong>{{ stats.nodeCount }}</strong><span>知识节点</span></div>
-      <div><strong>{{ stats.edgeCount }}</strong><span>知识关系</span></div>
+      <div><strong>{{ pathStats.nodeCount }}</strong><span>路径节点</span></div>
+      <div><strong>{{ pathStats.edgeCount }}</strong><span>路径关系</span></div>
       <p v-if="isParsing"><span class="material-symbols-outlined spin">progress_activity</span>还有 {{ stats.pendingCount + stats.processingCount }} 道题正在解析，已有图谱可继续操作。</p>
       <p v-else-if="stats.failedCount"><span class="material-symbols-outlined">warning</span>{{ stats.failedCount }} 道题解析失败，可再次解析。</p>
       <p v-else><span class="material-symbols-outlined">check_circle</span>图谱已与当前题库同步</p>
@@ -346,21 +338,9 @@ onBeforeUnmount(() => {
         <option value="all">全部主题</option>
         <option v-for="category in categories" :key="category" :value="category">{{ category }}</option>
       </select>
-      <select v-model="relationFilter">
-        <option value="all">全部关系</option>
-        <option value="co_occurrence">共同考查</option>
-        <option value="prerequisite">前置知识</option>
-        <option value="derivation">推导关系</option>
-        <option value="application">应用于</option>
-        <option value="confusable">易混淆</option>
-        <option value="related">相关</option>
-      </select>
-      <select v-model.number="neighborhoodDepth">
-        <option :value="0">显示全部</option>
-        <option :value="1">一层邻域</option>
-        <option :value="2">两层邻域</option>
-      </select>
-      <button class="toolbar-btn" type="button" @click="resetLayout"><span class="material-symbols-outlined">route</span>重新布局</button>
+      <button class="toolbar-btn" type="button" @click="relayoutGraph"><span class="material-symbols-outlined">route</span>重新布局</button>
+      <button class="toolbar-btn" type="button" @click="fitGraph"><span class="material-symbols-outlined">fit_screen</span>适应画布</button>
+      <button class="toolbar-btn" type="button" @click="resetLayout"><span class="material-symbols-outlined">restart_alt</span>恢复自动布局</button>
       <button class="toolbar-btn" type="button" @click="reconcileGraph"><span class="material-symbols-outlined">sync</span>协调数据</button>
     </section>
 
@@ -383,7 +363,8 @@ onBeforeUnmount(() => {
           :active-node-id="selectedNodeId"
           :active-edge-id="selectedEdgeId"
           :search-text="searchText"
-          :neighborhood-depth="neighborhoodDepth"
+          :layout-key="layoutKey"
+          :fit-request="fitRequest"
           @select-node="selectNode"
           @select-edge="selectEdge"
           @layout-change="queueLayoutChange"
@@ -394,6 +375,7 @@ onBeforeUnmount(() => {
         :node="selectedNodeDetail || selectedNode"
         :edge="selectedEdge"
         :nodes="nodes"
+        :edges="edges"
         :revision="graphData?.revision || 0"
         :saving="Boolean(savingAction) || detailLoading"
         @save-node="saveNode"
