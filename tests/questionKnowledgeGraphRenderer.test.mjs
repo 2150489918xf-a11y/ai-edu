@@ -9,7 +9,14 @@ assert.ok(renderer.includes("emit('select-edge'"));
 assert.ok(renderer.includes("emit('layout-change'"));
 assert.ok(renderer.includes('questionCount'));
 assert.ok(renderer.includes('supportCount'));
-assert.ok(renderer.includes('co_occurrence'));
+assert.ok(!renderer.includes('co_occurrence'));
+assert.ok(renderer.includes("type: 'antv-dagre'"));
+assert.ok(renderer.includes("rankdir: 'LR'"));
+assert.ok(renderer.includes('fitView'));
+assert.ok(renderer.includes('prerequisite'));
+assert.ok(renderer.includes('path-highlight'));
+assert.ok(renderer.includes('fit-canvas'));
+assert.ok(!renderer.includes("type: 'radial'"));
 assert.ok(
   renderer.includes('refreshGraphState'),
   'renderer should refresh selected node styles without rebuilding the graph'
@@ -18,9 +25,21 @@ assert.ok(
   !renderer.includes('props.activeNodeId, props.activeEdgeId, props.searchText, props.neighborhoodDepth],\n  renderGraph'),
   'changing the active node should not destroy and recreate the graph layout'
 );
+assert.ok(
+  renderer.includes('graphRenderKey'),
+  'renderer should derive a stable graph key for polling updates'
+);
+assert.ok(
+  !renderer.includes("watch(() => props.graphData, renderGraph, { deep: true })"),
+  'unchanged polling responses should not destroy and recreate the graph canvas'
+);
 assert.ok(inspector.includes("emit('save-node'"));
 assert.ok(inspector.includes("emit('merge-node'"));
 assert.ok(inspector.includes("emit('create-relation'"));
+assert.ok(inspector.includes("emit('select-relation'"));
+assert.ok(inspector.includes('前置知识'));
+assert.ok(inspector.includes('后续路径'));
+assert.ok(inspector.includes('辅助关系'));
 assert.ok(inspector.includes('关联题目'));
 
 console.log('question knowledge graph renderer contracts passed');

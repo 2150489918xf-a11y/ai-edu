@@ -8,6 +8,13 @@ const page = readFileSync(new URL('../src/pages/QuestionBankKnowledgeGraphPage.v
 const inspector = readFileSync(new URL('../src/components/knowledge/KnowledgeGraphInspector.vue', import.meta.url), 'utf8');
 const client = readFileSync(new URL('../src/data/questionBankApiClient.js', import.meta.url), 'utf8');
 
+assert.ok(page.includes('projectKnowledgePathGraph'));
+assert.ok(page.includes('pathStats'));
+assert.ok(page.includes('路径节点'));
+assert.ok(page.includes('路径关系'));
+assert.ok(page.includes('适应画布'));
+assert.ok(!page.includes('relationFilter'));
+assert.ok(!page.includes('neighborhoodDepth'));
 assert.ok(!app.includes("to: '/knowledge-graph'"));
 assert.ok(!router.includes("path: '/knowledge-graph'"));
 assert.ok(router.includes("path: '/question-banks/:bankId/knowledge-graph'"));

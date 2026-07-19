@@ -2,12 +2,15 @@
 import { Graph } from '@antv/g6';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
+import { projectKnowledgePathGraph } from './knowledgePathProjection.js';
+
 const props = defineProps({
   graphData: { type: Object, default: null },
   activeNodeId: { type: String, default: '' },
   activeEdgeId: { type: String, default: '' },
   searchText: { type: String, default: '' },
-  neighborhoodDepth: { type: Number, default: 0 }
+  layoutKey: { type: Number, default: 0 },
+  fitRequest: { type: Number, default: 0 }
 });
 
 const emit = defineEmits(['select-node', 'select-edge', 'layout-change']);
@@ -15,7 +18,13 @@ const containerRef = ref(null);
 let graph = null;
 let resizeObserver = null;
 
-const palette = ['#2fac66', '#2384f6', '#e08a3e', '#7b61ff', '#d86f72', '#14a6a1', '#9a6b3c'];
+const palette = ['#2c8a62', '#347fb2', '#bd7c38', '#8e6ab5', '#bf6c6a', '#2f9b96', '#7a8660'];
+const pathColors = {
+  prerequisite: '#2e7659',
+  derivation: '#337fa0',
+  application: '#b56f30'
+};
+const PATH_HIGHLIGHT_STATE = 'path-highlight';
 
 function categoryColor(category) {
   const text = String(category || '未分类');
@@ -24,19 +33,35 @@ function categoryColor(category) {
   return palette[Math.abs(hash) % palette.length];
 }
 
-function nodeSize(data) {
-  const questionCount = Math.max(0, Number(data?.questionCount || 0));
-  return Math.min(58, Math.max(28, 28 + Math.log2(questionCount + 1) * 8));
+function nodeWidth(label) {
+  const length = [...String(label || '')].length;
+  return Math.min(190, Math.max(128, 86 + length * 14));
 }
 
 function eventElementId(event) {
   return event?.target?.id || event?.target?.attributes?.id || event?.itemId || event?.id || '';
 }
 
+const projectedGraph = computed(() => projectKnowledgePathGraph(props.graphData || {}));
+
+const pathNeighbors = computed(() => {
+  const neighbors = new Set();
+  if (!props.activeNodeId) return neighbors;
+  for (const edge of projectedGraph.value.edges) {
+    if (edge.source === props.activeNodeId) neighbors.add(edge.target);
+    if (edge.target === props.activeNodeId) neighbors.add(edge.source);
+  }
+  return neighbors;
+});
+
 const normalizedData = computed(() => {
-  const source = props.graphData || {};
+  const source = projectedGraph.value;
+  const savedPositions = source.nodes
+    .filter((node) => node.position?.pinned && Number.isFinite(node.position.x) && Number.isFinite(node.position.y))
+    .map((node) => ({ id: node.id, x: node.position.x, y: node.position.y }));
+
   return {
-    nodes: (source.nodes || []).map((node) => ({
+    nodes: source.nodes.map((node) => ({
       id: node.id,
       ...(node.position?.pinned ? { style: { x: node.position.x, y: node.position.y } } : {}),
       data: {
@@ -46,10 +71,11 @@ const normalizedData = computed(() => {
         locked: Boolean(node.locked || node.manualLocked),
         questionCount: Number(node.questionCount || 0),
         orphan: Boolean(node.orphan),
+        layer: node.layer,
         raw: node
       }
     })),
-    edges: (source.edges || []).map((edge) => ({
+    edges: source.edges.map((edge) => ({
       id: edge.id,
       source: edge.source,
       target: edge.target,
@@ -61,19 +87,65 @@ const normalizedData = computed(() => {
         locked: Boolean(edge.locked),
         raw: edge
       }
-    }))
+    })),
+    savedPositions
   };
 });
 
-const focusNodeId = computed(() => {
-  return [...normalizedData.value.nodes]
-    .sort((left, right) => right.data.questionCount - left.data.questionCount)[0]?.id || '';
-});
+const graphRenderKey = computed(() => JSON.stringify({
+  nodes: projectedGraph.value.nodes.map((node) => [
+    node.id,
+    node.label,
+    node.category,
+    node.source,
+    Boolean(node.locked || node.manualLocked),
+    Number(node.questionCount || 0),
+    Boolean(node.orphan),
+    node.layer,
+    Boolean(node.position?.pinned),
+    node.position?.x ?? null,
+    node.position?.y ?? null
+  ]),
+  edges: projectedGraph.value.edges.map((edge) => [
+    edge.id,
+    edge.source,
+    edge.target,
+    edge.type,
+    edge.label,
+    edge.sourceKind,
+    Number(edge.supportCount || 0),
+    Boolean(edge.locked)
+  ])
+}));
 
-function isActiveEdge(datum) {
-  return datum.id === props.activeEdgeId || (
-    props.activeNodeId && (datum.source === props.activeNodeId || datum.target === props.activeNodeId)
+function isNodeDimmed(node) {
+  if (!props.activeNodeId) return false;
+  return node.id !== props.activeNodeId && !pathNeighbors.value.has(node.id);
+}
+
+function isEdgeActive(edge) {
+  return edge.id === props.activeEdgeId || (
+    props.activeNodeId && (edge.source === props.activeNodeId || edge.target === props.activeNodeId)
   );
+}
+
+function isEdgeDimmed(edge) {
+  return Boolean(props.activeNodeId) && !isEdgeActive(edge);
+}
+
+async function fitCanvas(animation = false) {
+  if (!graph) return;
+  await graph.fitView({ animation, padding: 56 });
+}
+
+async function zoomIn() {
+  if (!graph) return;
+  await graph.zoomTo(Math.min(2, graph.getZoom() * 1.16), { duration: 160 });
+}
+
+async function zoomOut() {
+  if (!graph) return;
+  await graph.zoomTo(Math.max(0.35, graph.getZoom() / 1.16), { duration: 160 });
 }
 
 async function renderGraph() {
@@ -85,6 +157,7 @@ async function renderGraph() {
     graph.destroy();
     graph = null;
   }
+
   const data = normalizedData.value;
   if (!data.nodes.length) return;
 
@@ -92,70 +165,75 @@ async function renderGraph() {
     container,
     data,
     node: {
-      type: 'circle',
+      type: 'rect',
+      state: {
+        [PATH_HIGHLIGHT_STATE]: {}
+      },
       style: (datum) => {
         const node = datum.data || {};
         const active = datum.id === props.activeNodeId;
-        const matchesSearch = props.searchText && String(node.label).toLowerCase().includes(props.searchText.toLowerCase());
+        const dimmed = isNodeDimmed(datum);
+        const matchesSearch = Boolean(
+          props.searchText && String(node.label).toLowerCase().includes(props.searchText.toLowerCase())
+        );
         const color = categoryColor(node.category);
         return {
-          size: nodeSize(node),
-          fill: node.orphan ? '#f5f2eb' : color,
-          fillOpacity: active || matchesSearch ? 1 : 0.9,
-          stroke: node.locked ? '#50359a' : node.source === 'manual' ? '#7659c5' : '#ffffff',
-          lineWidth: active ? 4 : node.locked ? 3 : 2,
-          shadowColor: active ? 'rgba(10, 53, 34, .28)' : 'rgba(10, 53, 34, .13)',
-          shadowBlur: active ? 20 : 8,
-          labelText: node.label,
-          labelPlacement: 'bottom',
-          labelMaxWidth: active ? 150 : 116,
-          labelWordWrap: true,
+          size: [nodeWidth(node.label), 54],
+          radius: 14,
+          fill: node.orphan ? '#f0f3ef' : `${color}22`,
+          fillOpacity: dimmed ? 0.26 : active || matchesSearch ? 1 : 0.94,
+          stroke: active ? '#123f2d' : node.locked ? '#7659c5' : node.source === 'manual' ? '#7659c5' : color,
+          lineWidth: active ? 3 : node.locked || node.source === 'manual' ? 2 : 1.5,
+          lineDash: node.orphan ? [5, 4] : [],
+          shadowColor: active ? 'rgba(18, 63, 45, .22)' : 'rgba(18, 63, 45, .10)',
+          shadowBlur: active ? 18 : 8,
+          opacity: dimmed ? 0.34 : 1,
+          labelText: `${node.label}\n${node.questionCount} 道题`,
+          labelPlacement: 'center',
+          labelMaxWidth: nodeWidth(node.label) - 18,
           labelMaxLines: 2,
+          labelWordWrap: true,
           labelTextOverflow: 'ellipsis',
           labelFontSize: active ? 13 : 11,
-          labelFontWeight: active || matchesSearch ? 800 : 650,
-          labelFill: '#18211d',
-          labelBackground: true,
-          labelBackgroundFill: active ? 'rgba(255,255,255,.96)' : 'rgba(255,255,255,.78)',
-          labelBackgroundRadius: 6,
-          labelPadding: [2, 6]
+          labelFontWeight: active || matchesSearch ? 800 : 700,
+          labelFill: active ? '#123f2d' : '#20392e',
+          labelLineHeight: 18,
+          labelBackground: false
         };
       }
     },
     edge: {
-      type: 'line',
+      type: 'polyline',
       style: (datum) => {
         const edge = datum.data || {};
-        const active = isActiveEdge(datum);
-        const manual = edge.sourceKind === 'manual';
-        const coOccurrence = edge.type === 'co_occurrence';
+        const active = isEdgeActive(datum);
+        const dimmed = isEdgeDimmed(datum);
         return {
-          stroke: manual ? '#7659c5' : active ? '#537469' : '#94a49d',
-          strokeOpacity: active ? 0.88 : manual ? 0.58 : 0.25,
-          lineWidth: active ? Math.min(5, 1.6 + edge.supportCount * 0.45) : Math.min(3, 1 + edge.supportCount * 0.25),
-          lineDash: coOccurrence || manual ? [] : [6, 5],
-          endArrow: active && !coOccurrence,
+          stroke: pathColors[edge.type] || '#7d9487',
+          strokeOpacity: dimmed ? 0.08 : active ? 0.95 : 0.5,
+          lineWidth: active ? 3 : 1.6,
+          radius: 10,
+          endArrow: true,
           labelText: active ? edge.label : '',
           labelFontSize: 10,
-          labelFill: '#40564d',
+          labelFontWeight: 700,
+          labelFill: '#365a4a',
           labelBackground: active,
           labelBackgroundFill: 'rgba(255,255,255,.94)',
           labelBackgroundRadius: 5,
-          labelPadding: [1, 5]
+          labelPadding: [2, 5]
         };
       }
     },
     layout: {
-      type: 'radial',
-      focusNode: focusNodeId.value,
-      unitRadius: 126,
-      preventOverlap: true,
-      strictRadial: false,
-      nodeSize: 82,
-      nodeSpacing: 34,
-      sortBy: 'questionCount',
-      sortStrength: 28,
-      maxIteration: 800
+      type: 'antv-dagre',
+      rankdir: 'LR',
+      ranker: 'network-simplex',
+      nodesep: 64,
+      ranksep: 150,
+      controlPoints: true,
+      nodeOrder: data.nodes.map((node) => node.id),
+      preset: data.savedPositions
     },
     behaviors: ['drag-canvas', 'zoom-canvas', 'drag-element']
   });
@@ -170,16 +248,17 @@ async function renderGraph() {
     const edge = props.graphData?.edges?.find((item) => item.id === id);
     if (edge) emit('select-edge', edge);
   });
+  graph.on('canvas:dblclick', () => fitCanvas(true));
   graph.on('node:dragend', (event) => {
     const id = eventElementId(event);
-    const attributes = event?.target?.attributes || {};
-    const x = Number(attributes.x ?? event?.canvas?.x);
-    const y = Number(attributes.y ?? event?.canvas?.y);
-    if (id && Number.isFinite(x) && Number.isFinite(y)) emit('layout-change', { id, x, y });
+    const position = id ? graph.getElementPosition(id) : null;
+    if (id && Number.isFinite(position?.x) && Number.isFinite(position?.y)) {
+      emit('layout-change', { id, x: position.x, y: position.y });
+    }
   });
 
   await graph.render();
-  await graph.fitCenter(false);
+  await fitCanvas(false);
 }
 
 async function refreshGraphState() {
@@ -189,7 +268,10 @@ async function refreshGraphState() {
 
 onMounted(() => {
   renderGraph();
-  resizeObserver = new ResizeObserver(() => graph?.resize());
+  resizeObserver = new ResizeObserver(() => {
+    graph?.resize();
+    fitCanvas(false);
+  });
   if (containerRef.value) resizeObserver.observe(containerRef.value);
 });
 
@@ -200,7 +282,9 @@ onBeforeUnmount(() => {
   graph = null;
 });
 
-watch(() => props.graphData, renderGraph, { deep: true });
+watch(graphRenderKey, renderGraph);
+watch(() => props.layoutKey, renderGraph);
+watch(() => props.fitRequest, () => fitCanvas(true));
 
 watch(
   () => [props.activeNodeId, props.activeEdgeId, props.searchText],
@@ -210,12 +294,23 @@ watch(
 
 <template>
   <div class="knowledge-graph-renderer">
+    <div class="graph-tools" aria-label="图谱工具">
+      <button class="graph-tool" data-action="fit-canvas" type="button" title="适应画布" aria-label="适应画布" @click="fitCanvas(true)">
+        <span class="material-symbols-outlined">fit_screen</span>
+      </button>
+      <button class="graph-tool" type="button" title="放大" aria-label="放大" @click="zoomIn">
+        <span class="material-symbols-outlined">add</span>
+      </button>
+      <button class="graph-tool" type="button" title="缩小" aria-label="缩小" @click="zoomOut">
+        <span class="material-symbols-outlined">remove</span>
+      </button>
+    </div>
     <div ref="containerRef" class="knowledge-graph-canvas"></div>
-    <div class="graph-legend" aria-label="知识图谱图例">
-      <span><i class="solid"></i>共同考查</span>
-      <span><i class="dashed"></i>AI 语义关系</span>
-      <span><i class="manual"></i>人工关系</span>
-      <span><b></b>节点越大，关联题目越多</span>
+    <div class="graph-legend" aria-label="知识路径图例">
+      <span><i class="prerequisite"></i>前置知识</span>
+      <span><i class="derivation"></i>推导关系</span>
+      <span><i class="application"></i>应用于</span>
+      <span><b></b>节点越大表示关联题目越多</span>
     </div>
   </div>
 </template>
@@ -228,14 +323,38 @@ watch(
   min-height: 420px;
   overflow: hidden;
   border-radius: 14px;
-  background-color: rgba(255, 255, 255, .66);
+  background-color: rgba(255, 255, 255, .72);
   background-image:
-    linear-gradient(rgba(10, 53, 34, .055) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(10, 53, 34, .055) 1px, transparent 1px);
+    linear-gradient(rgba(10, 53, 34, .045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(10, 53, 34, .045) 1px, transparent 1px);
   background-size: 34px 34px;
 }
 
 .knowledge-graph-canvas { width: 100%; height: 100%; min-height: inherit; }
+
+.graph-tools {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 6px;
+}
+
+.graph-tool {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid rgba(216, 225, 220, .92);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .92);
+  color: #315846;
+  box-shadow: 0 4px 10px rgba(25, 62, 46, .08);
+}
+
+.graph-tool:hover { border-color: #8eb8a4; color: #176b49; }
+.graph-tool .material-symbols-outlined { font-size: 17px; }
 
 .graph-legend {
   position: absolute;
@@ -247,6 +366,7 @@ watch(
   max-width: calc(100% - 24px);
   pointer-events: none;
 }
+
 .graph-legend span {
   display: inline-flex;
   align-items: center;
@@ -260,8 +380,16 @@ watch(
   font-weight: 700;
   backdrop-filter: blur(8px);
 }
+
 .graph-legend i { display: inline-block; width: 18px; border-top: 2px solid #7e9188; }
-.graph-legend i.dashed { border-top-style: dashed; }
-.graph-legend i.manual { border-color: #7659c5; }
+.graph-legend i.prerequisite { border-color: #2e7659; }
+.graph-legend i.derivation { border-color: #337fa0; }
+.graph-legend i.application { border-color: #b56f30; }
 .graph-legend b { width: 9px; height: 9px; border-radius: 50%; background: var(--green); }
+
+@media (max-width: 760px) {
+  .graph-tools { top: 8px; right: 8px; }
+  .graph-tool { width: 30px; height: 30px; }
+  .graph-legend { bottom: 8px; left: 8px; }
+}
 </style>

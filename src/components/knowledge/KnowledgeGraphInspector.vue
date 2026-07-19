@@ -5,6 +5,7 @@ const props = defineProps({
   node: { type: Object, default: null },
   edge: { type: Object, default: null },
   nodes: { type: Array, default: () => [] },
+  edges: { type: Array, default: () => [] },
   revision: { type: Number, default: 0 },
   saving: { type: Boolean, default: false }
 });
@@ -17,6 +18,7 @@ const emit = defineEmits([
   'create-relation',
   'save-relation',
   'delete-relation',
+  'select-relation',
   'open-question'
 ]);
 
@@ -29,6 +31,41 @@ const relationLabel = ref('相关');
 
 const otherNodes = computed(() => props.nodes.filter((node) => node.id !== props.node?.id));
 const canEditEdge = computed(() => props.edge?.sourceKind === 'manual' || props.edge?.locked);
+const pathRelationTypes = new Set(['prerequisite', 'derivation', 'application']);
+const relationTypeLabels = {
+  prerequisite: '前置知识',
+  derivation: '推导关系',
+  application: '应用于',
+  co_occurrence: '共同考查',
+  related: '相关',
+  confusable: '易混淆'
+};
+
+const nodeRelations = computed(() => {
+  if (!props.node?.id) return [];
+  return props.edges.filter((edge) => edge.source === props.node.id || edge.target === props.node.id);
+});
+const incomingPathRelations = computed(() => nodeRelations.value.filter((edge) => (
+  edge.target === props.node?.id && pathRelationTypes.has(edge.type)
+)));
+const outgoingPathRelations = computed(() => nodeRelations.value.filter((edge) => (
+  edge.source === props.node?.id && pathRelationTypes.has(edge.type)
+)));
+const auxiliaryRelations = computed(() => nodeRelations.value.filter((edge) => !pathRelationTypes.has(edge.type)));
+
+function nodeName(id) {
+  const node = props.nodes.find((item) => item.id === id);
+  return node?.label || node?.name || String(id || '').slice(0, 8);
+}
+
+function relatedNodeName(edge) {
+  if (!props.node) return '';
+  return nodeName(edge.source === props.node.id ? edge.target : edge.source);
+}
+
+function relationTypeLabel(type) {
+  return relationTypeLabels[type] || '知识关系';
+}
 
 watch(() => props.node, (node) => {
   nodeForm.name = node?.name || node?.label || '';
@@ -137,6 +174,40 @@ function saveRelation() {
         </button>
       </section>
 
+      <section class="inspector-section path-section">
+        <div class="section-title"><strong>知识路径</strong><span>上下游</span></div>
+        <div class="path-group">
+          <span class="path-label">前置知识</span>
+          <div class="relation-links">
+            <button
+              v-for="relation in incomingPathRelations"
+              :key="relation.id"
+              type="button"
+              @click="emit('select-relation', relation)"
+            >
+              <strong>{{ relatedNodeName(relation) }}</strong>
+              <span>{{ relation.label || relationTypeLabel(relation.type) }}</span>
+            </button>
+            <p v-if="!incomingPathRelations.length">暂无前置路径</p>
+          </div>
+        </div>
+        <div class="path-group">
+          <span class="path-label">后续路径</span>
+          <div class="relation-links">
+            <button
+              v-for="relation in outgoingPathRelations"
+              :key="relation.id"
+              type="button"
+              @click="emit('select-relation', relation)"
+            >
+              <strong>{{ relatedNodeName(relation) }}</strong>
+              <span>{{ relation.label || relationTypeLabel(relation.type) }}</span>
+            </button>
+            <p v-if="!outgoingPathRelations.length">暂无后续路径</p>
+          </div>
+        </div>
+      </section>
+
       <section class="inspector-section">
         <div class="section-title">
           <strong>关联题目</strong>
@@ -153,6 +224,22 @@ function saveRelation() {
             <span>{{ question.type }} · {{ question.difficulty }}</span>
           </button>
           <p v-if="!(node.questions || []).length">{{ node.orphan ? '待关联题目' : '加载节点后显示题目来源' }}</p>
+        </div>
+      </section>
+
+      <section class="inspector-section">
+        <div class="section-title"><strong>辅助关系</strong><span>{{ auxiliaryRelations.length }} 条</span></div>
+        <div class="relation-links">
+          <button
+            v-for="relation in auxiliaryRelations"
+            :key="relation.id"
+            type="button"
+            @click="emit('select-relation', relation)"
+          >
+            <strong>{{ relatedNodeName(relation) }}</strong>
+            <span>{{ relation.label || relationTypeLabel(relation.type) }} · {{ relation.supportCount || 0 }} 条证据</span>
+          </button>
+          <p v-if="!auxiliaryRelations.length">暂无共同考查、相关或易混淆关系</p>
         </div>
       </section>
 
@@ -317,7 +404,8 @@ function saveRelation() {
 }
 
 .question-links { display: grid; gap: 7px; }
-.question-links button {
+.question-links button,
+.relation-links button {
   display: grid;
   gap: 3px;
   border: 0;
@@ -327,6 +415,18 @@ function saveRelation() {
   color: var(--ink);
   text-align: left;
 }
+
+.path-section { gap: 14px; }
+.path-group { display: grid; gap: 7px; }
+.path-label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+.relation-links { display: grid; gap: 7px; }
+.relation-links button { background: rgba(245, 249, 247, .95); }
+.relation-links button:hover { background: rgba(228, 242, 234, .95); }
+.relation-links p { color: var(--muted); font-size: 11px; }
 
 .danger-zone { border-color: rgba(165, 72, 57, .18); }
 .danger-actions button {
