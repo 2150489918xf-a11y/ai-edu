@@ -25,6 +25,14 @@ assert.ok(
   !renderer.includes('props.activeNodeId, props.activeEdgeId, props.searchText, props.neighborhoodDepth],\n  renderGraph'),
   'changing the active node should not destroy and recreate the graph layout'
 );
+assert.ok(
+  renderer.includes('graphRenderKey'),
+  'renderer should derive a stable graph key for polling updates'
+);
+assert.ok(
+  !renderer.includes("watch(() => props.graphData, renderGraph, { deep: true })"),
+  'unchanged polling responses should not destroy and recreate the graph canvas'
+);
 assert.ok(inspector.includes("emit('save-node'"));
 assert.ok(inspector.includes("emit('merge-node'"));
 assert.ok(inspector.includes("emit('create-relation'"));

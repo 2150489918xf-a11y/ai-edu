@@ -92,6 +92,32 @@ const normalizedData = computed(() => {
   };
 });
 
+const graphRenderKey = computed(() => JSON.stringify({
+  nodes: projectedGraph.value.nodes.map((node) => [
+    node.id,
+    node.label,
+    node.category,
+    node.source,
+    Boolean(node.locked || node.manualLocked),
+    Number(node.questionCount || 0),
+    Boolean(node.orphan),
+    node.layer,
+    Boolean(node.position?.pinned),
+    node.position?.x ?? null,
+    node.position?.y ?? null
+  ]),
+  edges: projectedGraph.value.edges.map((edge) => [
+    edge.id,
+    edge.source,
+    edge.target,
+    edge.type,
+    edge.label,
+    edge.sourceKind,
+    Number(edge.supportCount || 0),
+    Boolean(edge.locked)
+  ])
+}));
+
 function isNodeDimmed(node) {
   if (!props.activeNodeId) return false;
   return node.id !== props.activeNodeId && !pathNeighbors.value.has(node.id);
@@ -256,7 +282,7 @@ onBeforeUnmount(() => {
   graph = null;
 });
 
-watch(() => props.graphData, renderGraph, { deep: true });
+watch(graphRenderKey, renderGraph);
 watch(() => props.layoutKey, renderGraph);
 watch(() => props.fitRequest, () => fitCanvas(true));
 
