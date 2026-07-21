@@ -28,6 +28,7 @@ const StudentCourseDetailPage = () => import('./pages/student/StudentCourseDetai
 const StudentCoursesPage = () => import('./pages/student/StudentCoursesPage.vue');
 const StudentPracticePage = () => import('./pages/student/StudentPracticePage.vue');
 const QuestionBankKnowledgeGraphPage = () => import('./pages/QuestionBankKnowledgeGraphPage.vue');
+const KnowledgeBaseKnowledgeGraphPage = () => import('./pages/KnowledgeBaseKnowledgeGraphPage.vue');
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -52,6 +53,7 @@ export const router = createRouter({
     { path: '/preclass/courses/:courseId/lesson-plan', name: 'lesson-plan', component: LessonPlanPage, meta: { fullscreen: true } },
     { path: '/preclass/courses/:courseId/analysis', name: 'course-analysis', component: StageAnalysisPage, meta: { fullscreen: true } },
     { path: '/knowledge-base', name: 'knowledge-base', component: KnowledgeBasePage },
+    { path: '/knowledge-base/knowledge-graph', name: 'knowledge-base-knowledge-graph', component: KnowledgeBaseKnowledgeGraphPage },
     { path: '/question-banks', name: 'question-banks', component: QuestionBanksPage },
     { path: '/question-banks/:bankId', name: 'question-bank-detail', component: QuestionBankDetailPage },
     { path: '/question-banks/:bankId/knowledge-graph', name: 'question-bank-knowledge-graph', component: QuestionBankKnowledgeGraphPage },
