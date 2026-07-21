@@ -24,6 +24,14 @@ const pathColors = {
   derivation: '#337fa0',
   application: '#b56f30'
 };
+const COMPACT_LAYOUT = {
+  minNodeWidth: 116,
+  maxNodeWidth: 172,
+  nodeGap: 28,
+  rankGap: 88,
+  fitPadding: 28,
+  edgeRadius: 7
+};
 const PATH_HIGHLIGHT_STATE = 'path-highlight';
 
 function categoryColor(category) {
@@ -35,7 +43,10 @@ function categoryColor(category) {
 
 function nodeWidth(label) {
   const length = [...String(label || '')].length;
-  return Math.min(190, Math.max(128, 86 + length * 14));
+  return Math.min(
+    COMPACT_LAYOUT.maxNodeWidth,
+    Math.max(COMPACT_LAYOUT.minNodeWidth, 78 + length * 13)
+  );
 }
 
 function eventElementId(event) {
@@ -135,7 +146,7 @@ function isEdgeDimmed(edge) {
 
 async function fitCanvas(animation = false) {
   if (!graph) return;
-  await graph.fitView({ animation, padding: 56 });
+  await graph.fitView({ animation, padding: COMPACT_LAYOUT.fitPadding });
 }
 
 async function zoomIn() {
@@ -212,7 +223,7 @@ async function renderGraph() {
           stroke: pathColors[edge.type] || '#7d9487',
           strokeOpacity: dimmed ? 0.08 : active ? 0.95 : 0.5,
           lineWidth: active ? 3 : 1.6,
-          radius: 10,
+          radius: COMPACT_LAYOUT.edgeRadius,
           endArrow: true,
           labelText: active ? edge.label : '',
           labelFontSize: 10,
@@ -229,8 +240,9 @@ async function renderGraph() {
       type: 'antv-dagre',
       rankdir: 'LR',
       ranker: 'network-simplex',
-      nodesep: 64,
-      ranksep: 150,
+      nodesep: COMPACT_LAYOUT.nodeGap,
+      ranksep: COMPACT_LAYOUT.rankGap,
+      edgeLabelSpace: false,
       controlPoints: true,
       nodeOrder: data.nodes.map((node) => node.id),
       preset: data.savedPositions
