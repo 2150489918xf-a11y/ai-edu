@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import AiChat from '../components/AiChat.vue';
+import CourseWorkflowRail from '../components/CourseWorkflowRail.vue';
 import { getCourse as fetchCourseDetail } from '../data/courseApiClient';
 import { getLessonPlanAssistantText, streamLessonPlan } from '../data/lessonPlanAgentClient';
 import { appendCourseChatMessage, getCourseChat, notify } from '../data/mockStore';
@@ -281,25 +282,7 @@ onMounted(loadPersistedLessonPlan);
     </header>
 
     <section class="lp-shell" :class="{ 'is-generated': lessonGenerated }">
-      <nav class="lp-course-rail" aria-label="课程工作台步骤">
-        <button class="lp-course-step" type="button" @click="router.push(`/preclass/courses/${courseId}/workspace`)">
-          <span class="material-symbols-outlined">auto_awesome</span>
-          生成
-        </button>
-        <button class="lp-course-step" type="button" @click="router.push(`/preclass/courses/${courseId}/ppt`)">
-          <span class="material-symbols-outlined">desktop_windows</span>
-          PPT
-        </button>
-        <button class="lp-course-step active" type="button">
-          <span class="material-symbols-outlined">article</span>
-          教案
-        </button>
-        <button class="lp-course-step" type="button" @click="router.push(`/preclass/courses/${courseId}/analysis`)">
-          <span class="material-symbols-outlined">analytics</span>
-          题析
-        </button>
-        <div class="lp-ai-mark">AI</div>
-      </nav>
+      <CourseWorkflowRail :course-id="courseId" active-step="lesson-plan" />
 
       <aside v-if="lessonGenerated" class="lp-rail">
         <header class="lp-rail-head">
@@ -584,62 +567,12 @@ onMounted(loadPersistedLessonPlan);
 .lp-shell {
   min-height: 0;
   display: grid;
-  grid-template-columns: 80px minmax(0, 1fr) var(--edu-side-panel);
+  grid-template-columns: 64px minmax(0, 1fr) var(--edu-side-panel);
   overflow: hidden;
 }
 
 .lp-shell.is-generated {
-  grid-template-columns: 80px 190px minmax(0, 1fr) var(--edu-side-panel);
-}
-
-.lp-course-rail {
-  position: relative;
-  display: grid;
-  grid-auto-rows: 72px;
-  align-content: start;
-  border-right: 1px solid var(--line);
-  background: rgba(255, 255, 255, .64);
-}
-
-.lp-course-step {
-  display: grid;
-  place-items: center;
-  gap: 5px;
-  border: 0;
-  background: transparent;
-  color: var(--soft);
-  font-size: 11px;
-  font-weight: 750;
-}
-
-.lp-course-step .material-symbols-outlined {
-  font-size: 22px;
-}
-
-.lp-course-step.active {
-  width: 72px;
-  height: 60px;
-  margin: 10px 8px 2px 0;
-  border-radius: 0 var(--edu-radius-md) var(--edu-radius-md) 0;
-  background: var(--deep);
-  color: #7df0a0;
-}
-
-.lp-ai-mark {
-  position: absolute;
-  left: 50%;
-  bottom: 22px;
-  display: grid;
-  width: 48px;
-  height: 48px;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--deep);
-  color: #7df0a0;
-  font-family: var(--font-number);
-  font-size: 13px;
-  font-weight: 800;
-  transform: translateX(-50%);
+  grid-template-columns: 64px 190px minmax(0, 1fr) var(--edu-side-panel);
 }
 
 .lp-rail,
@@ -1273,11 +1206,11 @@ onMounted(loadPersistedLessonPlan);
   }
 
   .lp-shell {
-    grid-template-columns: minmax(0, 1fr) 320px;
+    grid-template-columns: 64px minmax(0, 1fr) 320px;
   }
 
   .lp-shell.is-generated {
-    grid-template-columns: 168px minmax(0, 1fr) 320px;
+    grid-template-columns: 64px 168px minmax(0, 1fr) 320px;
   }
 
   .lp-main {
@@ -1295,11 +1228,11 @@ onMounted(loadPersistedLessonPlan);
 
 @media (max-width: 1180px) {
   .lp-shell {
-    grid-template-columns: minmax(0, 1fr) 316px;
+    grid-template-columns: 64px minmax(0, 1fr) 316px;
   }
 
   .lp-shell.is-generated {
-    grid-template-columns: 72px minmax(0, 1fr) 316px;
+    grid-template-columns: 64px 72px minmax(0, 1fr) 316px;
   }
 
   .lp-rail-head div,

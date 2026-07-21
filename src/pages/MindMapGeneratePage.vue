@@ -1,6 +1,7 @@
 ﻿<script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import CourseWorkflowRail from '../components/CourseWorkflowRail.vue';
 import MindMapRenderer from '../components/MindMapRenderer.vue';
 import {
   createCourse,
@@ -673,29 +674,7 @@ onUnmounted(() => {
     </header>
 
     <section class="mind-shell">
-      <nav class="mind-rail" aria-label="课程工作台步骤">
-        <button class="mind-step" type="button" @click="router.push(`/preclass/courses/${course.id}/workspace`)">
-          <span class="material-symbols-outlined">auto_awesome</span>
-          生成
-        </button>
-        <button class="mind-step active" type="button">
-          <span class="material-symbols-outlined">account_tree</span>
-          导图
-        </button>
-        <button class="mind-step" type="button" @click="router.push(`/preclass/courses/${course.id}/ppt`)">
-          <span class="material-symbols-outlined">desktop_windows</span>
-          PPT
-        </button>
-        <button class="mind-step" type="button" @click="router.push(`/preclass/courses/${course.id}/lesson-plan`)">
-          <span class="material-symbols-outlined">article</span>
-          教案
-        </button>
-        <button class="mind-step" type="button" @click="router.push(`/preclass/courses/${course.id}/analysis`)">
-          <span class="material-symbols-outlined">analytics</span>
-          题析
-        </button>
-        <div class="mind-ai-mark">AI</div>
-      </nav>
+      <CourseWorkflowRail :course-id="course.id" active-step="mindmap" />
 
       <aside class="mind-sources" :class="{ selecting: materialSelectorOpen }">
         <header>
@@ -973,51 +952,9 @@ onUnmounted(() => {
 
 .mind-shell {
   display: grid;
-  grid-template-columns: 80px 320px minmax(0, 1fr) 360px;
+  grid-template-columns: 64px 320px minmax(0, 1fr) 360px;
   height: calc(100vh - var(--edu-topbar-h));
   min-height: 0;
-}
-
-.mind-rail {
-  display: grid;
-  align-content: start;
-  gap: 10px;
-  padding-top: 18px;
-  border-right: 1px solid var(--line);
-  background: rgba(255, 255, 255, .36);
-}
-
-.mind-step {
-  display: grid;
-  width: 72px;
-  min-height: 60px;
-  place-items: center;
-  gap: 4px;
-  border: 0;
-  border-radius: 0 12px 12px 0;
-  background: transparent;
-  color: var(--soft);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.mind-step.active {
-  background: var(--deep);
-  color: white;
-  box-shadow: 0 14px 26px rgba(7, 52, 32, .18);
-}
-
-.mind-ai-mark {
-  display: grid;
-  width: 44px;
-  height: 44px;
-  place-items: center;
-  margin: 16px auto 0;
-  border-radius: 50%;
-  background: var(--mint);
-  color: var(--green);
-  font-family: var(--font-number);
-  font-weight: 900;
 }
 
 .mind-sources,

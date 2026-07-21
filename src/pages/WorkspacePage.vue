@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import AiChat from '../components/AiChat.vue';
+import CourseWorkflowRail from '../components/CourseWorkflowRail.vue';
 import {
   appendCourseChatMessage,
   getCourseChat,
@@ -60,6 +61,9 @@ const outline = computed(() => course.value.outline || getOutline(course.value.i
 const topic = computed(() => course.value.title.match(/《(.+)》/)?.[1] || course.value.shortTitle.split(' ・ ').pop());
 const isNewDraft = computed(() => course.value.isDraft && !course.value.hasOutline);
 const canGenerateOutline = computed(() => !course.value.isDraft || course.value.infoReady);
+const lockedWorkflowSteps = computed(() => course.value?.hasOutline && outline.value
+  ? []
+  : ['mindmap', 'ppt', 'lesson-plan']);
 const messages = computed(() => courseChat.value.messages);
 const scriptStep = computed({
   get: () => courseChat.value.scriptStep,
@@ -326,12 +330,8 @@ function handleMaterialSelected(event) {
   }, 10000);
 }
 
-function requireOutline(next) {
-  if (!course.value.hasOutline || !outline.value) {
-    notify('请先生成课程大纲');
-    return;
-  }
-  next();
+function handleWorkflowBlocked() {
+  notify('请先生成课程大纲');
 }
 
 function handleChatSuggestion(suggestion) {
@@ -373,41 +373,12 @@ function handleChatSuggestion(suggestion) {
     </header>
 
     <section class="ws-shell">
-      <nav class="ws-rail" aria-label="课程工作台步骤">
-        <button class="ws-step active" type="button">
-          <span class="material-symbols-outlined">auto_awesome</span>
-          生成
-        </button>
-        <button
-          class="ws-step"
-          type="button"
-          @click="requireOutline(() => router.push(`/preclass/courses/${course.id}/mindmap`))"
-        >
-          <span class="material-symbols-outlined">account_tree</span>
-          导图
-        </button>
-        <button
-          class="ws-step"
-          type="button"
-          @click="requireOutline(() => router.push(`/preclass/courses/${course.id}/ppt`))"
-        >
-          <span class="material-symbols-outlined">desktop_windows</span>
-          PPT
-        </button>
-        <button
-          class="ws-step"
-          type="button"
-          @click="requireOutline(() => router.push(`/preclass/courses/${course.id}/lesson-plan`))"
-        >
-          <span class="material-symbols-outlined">article</span>
-          教案
-        </button>
-        <button class="ws-step" type="button" @click="router.push(`/preclass/courses/${course.id}/analysis`)">
-          <span class="material-symbols-outlined">analytics</span>
-          题析
-        </button>
-        <div class="ws-ai-mark">AI</div>
-      </nav>
+      <CourseWorkflowRail
+        :course-id="course.id"
+        active-step="generate"
+        :locked-steps="lockedWorkflowSteps"
+        @blocked="handleWorkflowBlocked"
+      />
 
       <section class="ws-main">
         <article v-if="!course.hasOutline || !outline" class="ws-empty-card">
@@ -726,50 +697,6 @@ function handleChatSuggestion(suggestion) {
   min-height: 0;
   display: grid;
   grid-template-columns: 64px minmax(0, 1fr) var(--edu-side-panel);
-}
-
-.ws-rail {
-  position: relative;
-  min-height: 0;
-  display: grid;
-  align-content: start;
-  gap: var(--edu-gap-xs);
-  padding-top: 10px;
-  border-right: 1px solid var(--line);
-  background: rgba(255, 255, 255, .42);
-}
-
-.ws-step {
-  display: grid;
-  width: 60px;
-  min-height: 58px;
-  place-items: center;
-  gap: 4px;
-  border: 0;
-  border-radius: 0 var(--edu-radius-md) var(--edu-radius-md) 0;
-  background: transparent;
-  color: var(--soft);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.ws-step.active {
-  background: var(--mint);
-  color: var(--green);
-}
-
-.ws-ai-mark {
-  position: absolute;
-  left: 14px;
-  bottom: 16px;
-  display: grid;
-  width: var(--edu-control-h);
-  height: var(--edu-control-h);
-  place-items: center;
-  border-radius: 50%;
-  background: var(--deep);
-  color: #7df0a0;
-  font-weight: 700;
 }
 
 .ws-main {
@@ -1267,7 +1194,7 @@ function handleChatSuggestion(suggestion) {
 
 @media (max-width: 1280px) {
   .ws-shell {
-    grid-template-columns: 60px minmax(0, 1fr) 318px;
+    grid-template-columns: 64px minmax(0, 1fr) 318px;
   }
 
   .ws-outline-actions .ws-btn {

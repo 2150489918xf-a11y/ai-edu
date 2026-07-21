@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import CourseWorkflowRail from '../components/CourseWorkflowRail.vue';
 import { getAnsweredCourseQuestions, getCourse, getCourseQuestions, notify, store } from '../data/mockStore';
 
 const route = useRoute();
@@ -64,25 +65,7 @@ function openAnalysisModal(questionId) {
     </header>
 
     <section class="qa-shell">
-      <nav class="qa-rail" aria-label="课程工作台步骤">
-        <button class="qa-step" type="button" @click="router.push(`/preclass/courses/${course.id}/workspace`)">
-          <span class="material-symbols-outlined">auto_awesome</span>
-          生成
-        </button>
-        <button class="qa-step" type="button" @click="router.push(`/preclass/courses/${course.id}/ppt`)">
-          <span class="material-symbols-outlined">desktop_windows</span>
-          PPT
-        </button>
-        <button class="qa-step" type="button" @click="router.push(`/preclass/courses/${course.id}/lesson-plan`)">
-          <span class="material-symbols-outlined">article</span>
-          教案
-        </button>
-        <button class="qa-step active" type="button">
-          <span class="material-symbols-outlined">analytics</span>
-          题析
-        </button>
-        <div class="qa-ai-mark">AI</div>
-      </nav>
+      <CourseWorkflowRail :course-id="course.id" active-step="analysis" />
 
       <section class="qa-content">
 
@@ -350,59 +333,8 @@ function openAnalysisModal(questionId) {
 .qa-shell {
   min-height: 0;
   display: grid;
-  grid-template-columns: 80px minmax(0, 1fr);
+  grid-template-columns: 64px minmax(0, 1fr);
   overflow: hidden;
-}
-
-.qa-rail {
-  position: relative;
-  display: grid;
-  grid-auto-rows: 72px;
-  align-content: start;
-  justify-items: stretch;
-  border-right: 1px solid var(--line);
-  background: rgba(255, 255, 255, .64);
-}
-
-.qa-step {
-  display: grid;
-  place-items: center;
-  gap: 5px;
-  border: 0;
-  background: transparent;
-  color: var(--soft);
-  font-size: 11px;
-  font-weight: 750;
-}
-
-.qa-step .material-symbols-outlined {
-  font-size: 22px;
-}
-
-.qa-step.active {
-  width: 72px;
-  height: 60px;
-  margin: 10px 8px 2px 0;
-  border-radius: 0 var(--edu-radius-md) var(--edu-radius-md) 0;
-  background: var(--deep);
-  color: #7df0a0;
-}
-
-.qa-ai-mark {
-  position: absolute;
-  left: 50%;
-  bottom: 22px;
-  display: grid;
-  width: 48px;
-  height: 48px;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--deep);
-  color: #7df0a0;
-  font-family: var(--font-number);
-  font-size: 13px;
-  font-weight: 800;
-  transform: translateX(-50%);
 }
 
 .qa-content .module-tools {
