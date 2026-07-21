@@ -15,7 +15,6 @@ import {
   mergeQuestionBankKnowledgePoint,
   reconcileQuestionBankKnowledgeGraph,
   removeQuestionBankKnowledgePoint,
-  saveQuestionBankKnowledgeGraphLayout,
   updateQuestionBankKnowledgePoint,
   updateQuestionBankKnowledgeRelation
 } from '../data/questionBankApiClient';
@@ -37,8 +36,6 @@ const categoryFilter = ref('all');
 const layoutKey = ref(0);
 const fitRequest = ref(0);
 let pollTimer = null;
-let layoutTimer = null;
-const pendingLayouts = new Map();
 
 const bankId = computed(() => String(route.params.bankId || ''));
 const nodes = computed(() => graphData.value?.nodes || []);
@@ -229,41 +226,6 @@ function deleteRelation(payload) {
   ), { keepNodeId: '' });
 }
 
-function queueLayoutChange(change) {
-  if (!change?.id) return;
-  pendingLayouts.set(change.id, {
-    knowledgePointId: change.id,
-    x: change.x,
-    y: change.y,
-    pinned: true
-  });
-  if (layoutTimer) window.clearTimeout(layoutTimer);
-  layoutTimer = window.setTimeout(flushLayout, 400);
-}
-
-async function flushLayout() {
-  layoutTimer = null;
-  if (!pendingLayouts.size || !graphData.value) return;
-  const changes = [...pendingLayouts.values()];
-  pendingLayouts.clear();
-  try {
-    await saveQuestionBankKnowledgeGraphLayout(bankId.value, {
-      graphRevision: graphData.value.revision,
-      nodes: changes
-    });
-    await loadGraph({ silent: true });
-  } catch (layoutError) {
-    notify(layoutError.message || '节点位置保存失败');
-  }
-}
-
-function resetLayout() {
-  return runMutation('恢复自动布局', () => saveQuestionBankKnowledgeGraphLayout(bankId.value, {
-    graphRevision: graphData.value.revision,
-    nodes: nodes.value.map((node) => ({ knowledgePointId: node.id, pinned: false }))
-  }));
-}
-
 function relayoutGraph() {
   layoutKey.value += 1;
 }
@@ -286,7 +248,6 @@ watch(bankId, () => {
 onMounted(loadGraph);
 onBeforeUnmount(() => {
   clearPolling();
-  if (layoutTimer) window.clearTimeout(layoutTimer);
 });
 </script>
 
@@ -338,9 +299,8 @@ onBeforeUnmount(() => {
         <option value="all">全部主题</option>
         <option v-for="category in categories" :key="category" :value="category">{{ category }}</option>
       </select>
-      <button class="toolbar-btn" type="button" @click="relayoutGraph"><span class="material-symbols-outlined">route</span>重新布局</button>
+      <button class="toolbar-btn" type="button" @click="relayoutGraph"><span class="material-symbols-outlined">route</span>重新分层</button>
       <button class="toolbar-btn" type="button" @click="fitGraph"><span class="material-symbols-outlined">fit_screen</span>适应画布</button>
-      <button class="toolbar-btn" type="button" @click="resetLayout"><span class="material-symbols-outlined">restart_alt</span>恢复自动布局</button>
       <button class="toolbar-btn" type="button" @click="reconcileGraph"><span class="material-symbols-outlined">sync</span>协调数据</button>
     </section>
 
@@ -367,7 +327,6 @@ onBeforeUnmount(() => {
           :fit-request="fitRequest"
           @select-node="selectNode"
           @select-edge="selectEdge"
-          @layout-change="queueLayoutChange"
         />
       </div>
 

@@ -6,16 +6,18 @@ const inspector = readFileSync(new URL('../src/components/knowledge/KnowledgeGra
 
 assert.ok(renderer.includes("emit('select-node'"));
 assert.ok(renderer.includes("emit('select-edge'"));
-assert.ok(renderer.includes("emit('layout-change'"));
 assert.ok(renderer.includes('questionCount'));
 assert.ok(renderer.includes('supportCount'));
 assert.ok(!renderer.includes('co_occurrence'));
-assert.ok(renderer.includes("type: 'antv-dagre'"));
-assert.ok(renderer.includes("rankdir: 'LR'"));
+assert.ok(renderer.includes('projectTeachingPathGraph'));
+assert.ok(renderer.includes('stageLanes'));
+assert.ok(renderer.includes("type: 'cubic-horizontal'"));
+assert.ok(renderer.includes("visibility: visible ? 'visible' : 'hidden'"));
+assert.ok(renderer.includes('isStageLane'));
+assert.ok(!renderer.includes("type: 'antv-dagre'"));
+assert.ok(!renderer.includes("'drag-element'"));
+assert.ok(!renderer.includes("emit('layout-change'"));
 assert.ok(renderer.includes('const COMPACT_LAYOUT'));
-assert.ok(renderer.includes('nodesep: COMPACT_LAYOUT.nodeGap'));
-assert.ok(renderer.includes('ranksep: COMPACT_LAYOUT.rankGap'));
-assert.ok(renderer.includes('edgeLabelSpace: false'));
 assert.ok(renderer.includes('padding: COMPACT_LAYOUT.fitPadding'));
 assert.ok(renderer.includes('minNodeWidth: 116'));
 assert.ok(renderer.includes('maxNodeWidth: 172'));
