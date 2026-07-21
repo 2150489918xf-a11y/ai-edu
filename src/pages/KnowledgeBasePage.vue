@@ -306,6 +306,10 @@ onMounted(refreshMaterials);
         <p>管理教材、课标、PPT、学情报告和老师备注，形成可被备课、思维导图、课件和题目生成引用的教学 evidence。</p>
       </div>
       <div class="hero-actions">
+        <button class="soft-btn" type="button" @click="router.push('/knowledge-base/knowledge-graph')">
+          <span class="material-symbols-outlined">account_tree</span>
+          知识图谱
+        </button>
         <button class="soft-btn" type="button" @click="notify('批量导入任务已创建')">
           <span class="material-symbols-outlined">drive_folder_upload</span>
           批量导入
