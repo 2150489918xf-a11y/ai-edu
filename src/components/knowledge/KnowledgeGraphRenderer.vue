@@ -10,7 +10,9 @@ const props = defineProps({
   activeEdgeId: { type: String, default: '' },
   searchText: { type: String, default: '' },
   layoutKey: { type: Number, default: 0 },
-  fitRequest: { type: Number, default: 0 }
+  fitRequest: { type: Number, default: 0 },
+  countUnit: { type: String, default: '道题' },
+  countLegend: { type: String, default: '节点越大表示关联题目越多' }
 });
 
 const emit = defineEmits(['select-node', 'select-edge']);
@@ -248,7 +250,7 @@ async function renderGraph() {
           shadowColor: active ? 'rgba(18, 63, 45, .22)' : 'rgba(18, 63, 45, .10)',
           shadowBlur: active ? 18 : 8,
           opacity: dimmed ? 0.34 : 1,
-          labelText: `${node.label}\n${node.questionCount} 道题`,
+          labelText: `${node.label}\n${node.questionCount} ${props.countUnit}`,
           labelPlacement: 'center',
           labelMaxWidth: nodeWidth(node.label) - 18,
           labelMaxLines: 2,
@@ -356,7 +358,7 @@ watch(
       <span><i class="prerequisite"></i>前置知识</span>
       <span><i class="derivation"></i>推导关系</span>
       <span><i class="application"></i>应用于</span>
-      <span><b></b>节点越大表示关联题目越多</span>
+      <span><b></b>{{ countLegend }}</span>
     </div>
   </div>
 </template>
