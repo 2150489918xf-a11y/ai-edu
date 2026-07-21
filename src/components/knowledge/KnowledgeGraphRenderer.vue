@@ -2,7 +2,7 @@
 import { Graph } from '@antv/g6';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
-import { projectKnowledgePathGraph } from './knowledgePathProjection.js';
+import { projectTeachingPathGraph } from './teachingPathProjection.js';
 
 const props = defineProps({
   graphData: { type: Object, default: null },
@@ -13,7 +13,7 @@ const props = defineProps({
   fitRequest: { type: Number, default: 0 }
 });
 
-const emit = defineEmits(['select-node', 'select-edge', 'layout-change']);
+const emit = defineEmits(['select-node', 'select-edge']);
 const containerRef = ref(null);
 let graph = null;
 let resizeObserver = null;
@@ -24,13 +24,16 @@ const pathColors = {
   derivation: '#337fa0',
   application: '#b56f30'
 };
+const stageColors = [
+  { fill: '#f2f8f4', stroke: '#bdd9ca', label: '#225f45' },
+  { fill: '#f3f7fb', stroke: '#bfd3e2', label: '#2a6389' },
+  { fill: '#fbf7f1', stroke: '#e3ceb4', label: '#8d5b28' },
+  { fill: '#f8f4fb', stroke: '#d8c9e5', label: '#704d8e' }
+];
 const COMPACT_LAYOUT = {
   minNodeWidth: 116,
   maxNodeWidth: 172,
-  nodeGap: 28,
-  rankGap: 88,
-  fitPadding: 28,
-  edgeRadius: 7
+  fitPadding: 28
 };
 const PATH_HIGHLIGHT_STATE = 'path-highlight';
 
@@ -53,7 +56,7 @@ function eventElementId(event) {
   return event?.target?.id || event?.target?.attributes?.id || event?.itemId || event?.id || '';
 }
 
-const projectedGraph = computed(() => projectKnowledgePathGraph(props.graphData || {}));
+const projectedGraph = computed(() => projectTeachingPathGraph(props.graphData || {}));
 
 const pathNeighbors = computed(() => {
   const neighbors = new Set();
@@ -67,25 +70,37 @@ const pathNeighbors = computed(() => {
 
 const normalizedData = computed(() => {
   const source = projectedGraph.value;
-  const savedPositions = source.nodes
-    .filter((node) => node.position?.pinned && Number.isFinite(node.position.x) && Number.isFinite(node.position.y))
-    .map((node) => ({ id: node.id, x: node.position.x, y: node.position.y }));
 
   return {
-    nodes: source.nodes.map((node) => ({
-      id: node.id,
-      ...(node.position?.pinned ? { style: { x: node.position.x, y: node.position.y } } : {}),
-      data: {
-        label: node.label || node.name || node.id,
-        category: node.category || '未分类',
-        source: node.source || 'ai',
-        locked: Boolean(node.locked || node.manualLocked),
-        questionCount: Number(node.questionCount || 0),
-        orphan: Boolean(node.orphan),
-        layer: node.layer,
-        raw: node
-      }
-    })),
+    nodes: [
+      ...source.stageLanes.map((lane) => ({
+        id: lane.id,
+        style: { x: lane.x, y: lane.y },
+        data: {
+          isStageLane: true,
+          stageIndex: lane.index,
+          label: lane.label,
+          nodeCount: lane.nodeCount,
+          width: lane.width,
+          height: lane.height
+        }
+      })),
+      ...source.nodes.map((node) => ({
+        id: node.id,
+        style: { x: node.x, y: node.y },
+        data: {
+          label: node.label || node.name || node.id,
+          category: node.category || '未分类',
+          source: node.source || 'ai',
+          locked: Boolean(node.locked || node.manualLocked),
+          questionCount: Number(node.questionCount || 0),
+          orphan: Boolean(node.orphan),
+          layer: node.layer,
+          stageIndex: node.stageIndex,
+          raw: node
+        }
+      }))
+    ],
     edges: source.edges.map((edge) => ({
       id: edge.id,
       source: edge.source,
@@ -96,10 +111,11 @@ const normalizedData = computed(() => {
         sourceKind: edge.sourceKind || 'ai',
         supportCount: Number(edge.supportCount || 0),
         locked: Boolean(edge.locked),
+        defaultVisible: Boolean(edge.defaultVisible),
+        stageDistance: edge.stageDistance,
         raw: edge
       }
-    })),
-    savedPositions
+    }))
   };
 });
 
@@ -113,9 +129,9 @@ const graphRenderKey = computed(() => JSON.stringify({
     Number(node.questionCount || 0),
     Boolean(node.orphan),
     node.layer,
-    Boolean(node.position?.pinned),
-    node.position?.x ?? null,
-    node.position?.y ?? null
+    node.stageIndex,
+    node.x,
+    node.y
   ]),
   edges: projectedGraph.value.edges.map((edge) => [
     edge.id,
@@ -125,7 +141,17 @@ const graphRenderKey = computed(() => JSON.stringify({
     edge.label,
     edge.sourceKind,
     Number(edge.supportCount || 0),
-    Boolean(edge.locked)
+    Boolean(edge.locked),
+    Boolean(edge.defaultVisible),
+    edge.stageDistance
+  ]),
+  lanes: projectedGraph.value.stageLanes.map((lane) => [
+    lane.id,
+    lane.x,
+    lane.y,
+    lane.width,
+    lane.height,
+    lane.nodeCount
   ])
 }));
 
@@ -182,6 +208,29 @@ async function renderGraph() {
       },
       style: (datum) => {
         const node = datum.data || {};
+        if (node.isStageLane) {
+          const stageColor = stageColors[node.stageIndex] || stageColors[0];
+          return {
+            size: [node.width, node.height],
+            radius: 22,
+            fill: stageColor.fill,
+            fillOpacity: 0.72,
+            stroke: stageColor.stroke,
+            strokeOpacity: 0.85,
+            lineWidth: 1.2,
+            lineDash: [7, 6],
+            zIndex: -10,
+            pointerEvents: 'none',
+            labelText: `0${node.stageIndex + 1}  ${node.label}  ·  ${node.nodeCount} 个知识点`,
+            labelPlacement: 'top-left',
+            labelOffsetX: 16,
+            labelOffsetY: 17,
+            labelFontSize: 12,
+            labelFontWeight: 800,
+            labelFill: stageColor.label,
+            labelBackground: false
+          };
+        }
         const active = datum.id === props.activeNodeId;
         const dimmed = isNodeDimmed(datum);
         const matchesSearch = Boolean(
@@ -214,16 +263,19 @@ async function renderGraph() {
       }
     },
     edge: {
-      type: 'polyline',
+      type: 'cubic-horizontal',
       style: (datum) => {
         const edge = datum.data || {};
         const active = isEdgeActive(datum);
         const dimmed = isEdgeDimmed(datum);
+        const visible = edge.defaultVisible || isEdgeActive(datum);
+        const isSecondaryPath = Math.abs(Number(edge.stageDistance || 0)) !== 1;
         return {
+          visibility: visible ? 'visible' : 'hidden',
           stroke: pathColors[edge.type] || '#7d9487',
-          strokeOpacity: dimmed ? 0.08 : active ? 0.95 : 0.5,
+          strokeOpacity: dimmed ? 0.08 : active ? (isSecondaryPath ? 0.72 : 0.95) : 0.52,
           lineWidth: active ? 3 : 1.6,
-          radius: COMPACT_LAYOUT.edgeRadius,
+          lineDash: active && isSecondaryPath ? [7, 5] : [],
           endArrow: true,
           labelText: active ? edge.label : '',
           labelFontSize: 10,
@@ -236,18 +288,7 @@ async function renderGraph() {
         };
       }
     },
-    layout: {
-      type: 'antv-dagre',
-      rankdir: 'LR',
-      ranker: 'network-simplex',
-      nodesep: COMPACT_LAYOUT.nodeGap,
-      ranksep: COMPACT_LAYOUT.rankGap,
-      edgeLabelSpace: false,
-      controlPoints: true,
-      nodeOrder: data.nodes.map((node) => node.id),
-      preset: data.savedPositions
-    },
-    behaviors: ['drag-canvas', 'zoom-canvas', 'drag-element']
+    behaviors: ['drag-canvas', 'zoom-canvas']
   });
 
   graph.on('node:click', (event) => {
@@ -261,13 +302,6 @@ async function renderGraph() {
     if (edge) emit('select-edge', edge);
   });
   graph.on('canvas:dblclick', () => fitCanvas(true));
-  graph.on('node:dragend', (event) => {
-    const id = eventElementId(event);
-    const position = id ? graph.getElementPosition(id) : null;
-    if (id && Number.isFinite(position?.x) && Number.isFinite(position?.y)) {
-      emit('layout-change', { id, x: position.x, y: position.y });
-    }
-  });
 
   await graph.render();
   await fitCanvas(false);
