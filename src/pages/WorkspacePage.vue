@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router';
 import AiChat from '../components/AiChat.vue';
 import {
   appendCourseChatMessage,
-  getCourse as getMockCourse,
   getCourseChat,
   getOutline,
   markDraftMaterialUploaded,
@@ -21,7 +20,10 @@ import {
   requestOutlineAgent,
   stripOutlineJsonBlock
 } from '../data/outlineAgentClient';
-import { loadWorkspaceCourse } from '../data/workspaceCourseLoader';
+import {
+  loadWorkspaceCourse,
+  resolveWorkspaceFallbackCourse
+} from '../data/workspaceCourseLoader';
 
 const route = useRoute();
 const router = useRouter();
@@ -30,7 +32,8 @@ const aiLoading = ref(false);
 const outlineLoading = ref(false);
 const materialLoading = ref(false);
 const fileInput = ref(null);
-const workspaceCourse = ref(getMockCourse(route.params.courseId));
+const workspaceCourse = ref(resolveWorkspaceFallbackCourse(route.params.courseId));
+const workspaceLoadError = ref('');
 
 const newCourseScript = [
   {
@@ -83,9 +86,11 @@ let outlineAgentTypingTimer = 0;
 
 async function refreshWorkspaceCourse(id) {
   const token = ++courseLoadToken;
+  workspaceLoadError.value = '';
   const result = await loadWorkspaceCourse(String(id));
   if (token === courseLoadToken) {
     workspaceCourse.value = result.course;
+    workspaceLoadError.value = result.course ? '' : (result.error?.message || '课程加载失败');
   }
 }
 
@@ -257,7 +262,8 @@ onBeforeUnmount(() => {
 watch(
   () => route.params.courseId,
   (courseIdValue) => {
-    workspaceCourse.value = getMockCourse(courseIdValue);
+    workspaceCourse.value = resolveWorkspaceFallbackCourse(courseIdValue);
+    workspaceLoadError.value = '';
     refreshWorkspaceCourse(courseIdValue);
   }
 );
@@ -321,7 +327,7 @@ function handleMaterialSelected(event) {
 }
 
 function requireOutline(next) {
-  if (!course.value.hasOutline) {
+  if (!course.value.hasOutline || !outline.value) {
     notify('请先生成课程大纲');
     return;
   }
@@ -338,16 +344,27 @@ function handleChatSuggestion(suggestion) {
 
 <template>
   <main class="ws-page">
+    <section v-if="!course" class="ws-course-loading">
+      <span class="material-symbols-outlined">{{ workspaceLoadError ? 'error' : 'progress_activity' }}</span>
+      <strong>{{ workspaceLoadError ? '课程加载失败' : '正在读取课程信息' }}</strong>
+      <p>{{ workspaceLoadError || '正在从课程数据库获取基础信息与大纲状态。' }}</p>
+      <button v-if="workspaceLoadError" class="ws-btn" type="button" @click="refreshWorkspaceCourse(courseId)">
+        <span class="material-symbols-outlined">refresh</span>
+        重新加载
+      </button>
+    </section>
+
+    <template v-else>
     <header class="ws-top">
       <button class="ws-btn back-btn" type="button" @click="router.push('/preclass/courses')">
         <span class="material-symbols-outlined">chevron_left</span>
         返回我的课程
       </button>
       <div class="ws-title">
-        <h1>{{ isNewDraft ? '新建课程 · AI 备课工作台' : course.hasOutline ? topic : course.shortTitle }}</h1>
-        <p>{{ isNewDraft ? '先和 AI 对话确认基本信息，可选上传资料增强上下文' : `${course.grade} ・ ${course.subject} ・ ${course.duration} ・ ${course.hasOutline ? 'AI 已生成课程大纲' : '先填写基础信息，AI 帮你起草大纲'}` }}</p>
+        <h1>{{ isNewDraft ? '新建课程 · AI 备课工作台' : course.hasOutline && outline ? topic : course.shortTitle }}</h1>
+        <p>{{ isNewDraft ? '先和 AI 对话确认基本信息，可选上传资料增强上下文' : `${course.grade} ・ ${course.subject} ・ ${course.duration} ・ ${course.hasOutline && outline ? 'AI 已生成课程大纲' : '先填写基础信息，AI 帮你起草大纲'}` }}</p>
       </div>
-      <div v-if="course.hasOutline" class="ws-actions">
+      <div v-if="course.hasOutline && outline" class="ws-actions">
         <button class="ws-complete-status" type="button" disabled>
           <span class="material-symbols-outlined">check</span>
           完成大纲
@@ -393,7 +410,7 @@ function handleChatSuggestion(suggestion) {
       </nav>
 
       <section class="ws-main">
-        <article v-if="!course.hasOutline" class="ws-empty-card">
+        <article v-if="!course.hasOutline || !outline" class="ws-empty-card">
           <section class="ws-empty-copy">
             <span class="ws-chip"><span class="material-symbols-outlined">auto_awesome</span>{{ isNewDraft ? '从 0 开始' : 'AI 起草' }}</span>
             <h2>{{ isNewDraft ? '先和 AI 聊出课程基本信息' : '和 AI 先聊清楚，再生成第一版大纲' }}</h2>
@@ -539,7 +556,7 @@ function handleChatSuggestion(suggestion) {
       >
         <template #tools>
               <button
-                v-if="!course.hasOutline"
+                v-if="!course.hasOutline || !outline"
                 class="ws-upload-btn"
                 type="button"
                 :disabled="materialLoading"
@@ -549,7 +566,7 @@ function handleChatSuggestion(suggestion) {
                 {{ materialLoading ? '解析中' : course.materialUploaded ? '已解析' : '上传资料' }}
               </button>
               <input
-                v-if="!course.hasOutline"
+                v-if="!course.hasOutline || !outline"
                 ref="fileInput"
                 class="ws-file-input"
                 type="file"
@@ -559,6 +576,7 @@ function handleChatSuggestion(suggestion) {
         </template>
       </AiChat>
     </section>
+    </template>
   </main>
 </template>
 
@@ -574,6 +592,38 @@ function handleChatSuggestion(suggestion) {
     #f4faf6;
   color: var(--ink);
 }
+
+.ws-course-loading {
+  grid-row: 1 / -1;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  padding: 32px;
+  text-align: center;
+}
+
+.ws-course-loading > .material-symbols-outlined {
+  color: var(--green);
+  font-size: 42px;
+  animation: ws-loading-spin 1s linear infinite;
+}
+
+.ws-course-loading strong {
+  font-family: var(--font-serif);
+  font-size: 24px;
+}
+
+.ws-course-loading p {
+  max-width: 420px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.ws-course-loading .ws-btn { margin-top: 4px; }
+
+@keyframes ws-loading-spin { to { transform: rotate(360deg); } }
 
 .ws-top {
   min-width: 0;

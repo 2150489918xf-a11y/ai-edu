@@ -25,6 +25,21 @@ assert.ok(
 );
 
 assert.ok(
+  workspaceSource.includes('resolveWorkspaceFallbackCourse(route.params.courseId)'),
+  'API-only courses should start in a loading state instead of rendering an unrelated mock course'
+);
+
+assert.ok(
+  workspaceSource.includes('v-if="!course"'),
+  'workspace should render an explicit loading or error state before the API course is available'
+);
+
+assert.ok(
+  workspaceSource.includes('v-if="!course.hasOutline || !outline"'),
+  'a missing outline payload should use the outline generation state instead of dereferencing null'
+);
+
+assert.ok(
   workspaceSource.includes('currentOutline: course.value.hasOutline ? outline.value : null'),
   'workspace should not send a fallback outline when the current course has no outline yet'
 );

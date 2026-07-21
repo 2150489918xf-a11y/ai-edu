@@ -1,6 +1,19 @@
 import assert from 'node:assert/strict';
 
-import { loadWorkspaceCourse } from '../src/data/workspaceCourseLoader.js';
+import {
+  loadWorkspaceCourse,
+  resolveWorkspaceFallbackCourse
+} from '../src/data/workspaceCourseLoader.js';
+
+assert.equal(
+  resolveWorkspaceFallbackCourse('api-only-course', () => ({ id: 'unrelated-first-course' })),
+  null,
+  'an API-only course must not render an unrelated mock course while loading'
+);
+assert.deepEqual(
+  resolveWorkspaceFallbackCourse('mock-course', () => ({ id: 'mock-course', title: 'Mock course' })),
+  { id: 'mock-course', title: 'Mock course' }
+);
 
 const apiResult = await loadWorkspaceCourse('course-db-1', {
   fetchCourse: async (courseId) => ({
