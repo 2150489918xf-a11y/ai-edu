@@ -311,7 +311,7 @@ async function renderGraph(requestId) {
     const edge = props.graphData?.edges?.find((item) => item.id === id);
     if (edge) emit('select-edge', edge);
   });
-  nextGraph.on('canvas:dblclick', () => fitCanvas(true));
+  nextGraph.on('canvas:dblclick', () => requestFitCanvas(true));
 
   await nextGraph.render();
   if (componentDestroyed || graph !== nextGraph) return;
@@ -324,11 +324,15 @@ function reportRenderError(error) {
   if (!componentDestroyed) console.error('知识图谱渲染失败', error);
 }
 
+function enqueueGraphOperation(operation) {
+  renderQueue = renderQueue
+    .then(operation)
+    .catch(reportRenderError);
+}
+
 function requestGraphRender() {
   const requestId = ++renderRequestId;
-  renderQueue = renderQueue
-    .then(() => renderGraph(requestId))
-    .catch(reportRenderError);
+  enqueueGraphOperation(() => renderGraph(requestId));
 }
 
 async function refreshGraphState() {
@@ -336,14 +340,34 @@ async function refreshGraphState() {
   await graph.draw();
 }
 
+function requestGraphStateRefresh() {
+  enqueueGraphOperation(refreshGraphState);
+}
+
+function requestGraphResize() {
+  enqueueGraphOperation(async () => {
+    if (!graphReady || !graph) return;
+    graph.resize();
+    await fitCanvas(false);
+  });
+}
+
+function requestFitCanvas(animation = false) {
+  enqueueGraphOperation(() => fitCanvas(animation));
+}
+
+function requestZoomIn() {
+  enqueueGraphOperation(zoomIn);
+}
+
+function requestZoomOut() {
+  enqueueGraphOperation(zoomOut);
+}
+
 onMounted(() => {
   componentDestroyed = false;
   requestGraphRender();
-  resizeObserver = new ResizeObserver(() => {
-    if (!graphReady || !graph) return;
-    graph.resize();
-    fitCanvas(false);
-  });
+  resizeObserver = new ResizeObserver(requestGraphResize);
   if (containerRef.value) resizeObserver.observe(containerRef.value);
 });
 
@@ -359,24 +383,20 @@ onBeforeUnmount(() => {
 
 watch(graphRenderKey, requestGraphRender);
 watch(() => props.layoutKey, requestGraphRender);
-watch(() => props.fitRequest, () => fitCanvas(true));
-
-watch(
-  () => [props.activeNodeId, props.activeEdgeId, props.searchText],
-  refreshGraphState
-);
+watch(() => props.fitRequest, () => requestFitCanvas(true));
+watch(() => [props.activeNodeId, props.activeEdgeId], requestGraphStateRefresh);
 </script>
 
 <template>
   <div class="knowledge-graph-renderer">
     <div class="graph-tools" aria-label="图谱工具">
-      <button class="graph-tool" data-action="fit-canvas" type="button" title="适应画布" aria-label="适应画布" @click="fitCanvas(true)">
+      <button class="graph-tool" data-action="fit-canvas" type="button" title="适应画布" aria-label="适应画布" @click="requestFitCanvas(true)">
         <span class="material-symbols-outlined">fit_screen</span>
       </button>
-      <button class="graph-tool" type="button" title="放大" aria-label="放大" @click="zoomIn">
+      <button class="graph-tool" type="button" title="放大" aria-label="放大" @click="requestZoomIn">
         <span class="material-symbols-outlined">add</span>
       </button>
-      <button class="graph-tool" type="button" title="缩小" aria-label="缩小" @click="zoomOut">
+      <button class="graph-tool" type="button" title="缩小" aria-label="缩小" @click="requestZoomOut">
         <span class="material-symbols-outlined">remove</span>
       </button>
     </div>

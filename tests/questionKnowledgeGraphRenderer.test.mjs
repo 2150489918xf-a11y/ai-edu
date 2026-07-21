@@ -44,11 +44,16 @@ assert.ok(
 );
 assert.ok(renderer.includes('let renderQueue = Promise.resolve()'));
 assert.ok(renderer.includes('function requestGraphRender()'));
+assert.ok(renderer.includes('function enqueueGraphOperation(operation)'));
+assert.ok(renderer.includes('function requestGraphStateRefresh()'));
+assert.ok(renderer.includes('function requestGraphResize()'));
+assert.ok(renderer.includes('function requestFitCanvas(animation = false)'));
 assert.ok(renderer.includes('const nextGraph = new Graph'));
 assert.ok(renderer.includes('await nextGraph.render()'));
 assert.ok(renderer.includes('if (!graphReady || !graph) return'));
 assert.ok(renderer.includes('watch(graphRenderKey, requestGraphRender)'));
 assert.ok(!renderer.includes('watch(graphRenderKey, renderGraph)'));
+assert.ok(!renderer.includes('props.activeNodeId, props.activeEdgeId, props.searchText'));
 assert.ok(
   !renderer.includes("watch(() => props.graphData, renderGraph, { deep: true })"),
   'unchanged polling responses should not destroy and recreate the graph canvas'
