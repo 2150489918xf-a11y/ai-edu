@@ -18,6 +18,11 @@ assert.ok(renderer.includes('stageLanes'));
 assert.ok(renderer.includes("type: 'cubic-horizontal'"));
 assert.ok(renderer.includes("visibility: visible ? 'visible' : 'hidden'"));
 assert.ok(renderer.includes('isStageLane'));
+assert.match(
+  renderer,
+  /if \(node\.isStageLane\)[\s\S]*labelPlacement: 'top-left',[\s\S]*labelTextAlign: 'left'/,
+  'stage lane labels should start inside the lane instead of extending left of it'
+);
 assert.ok(!renderer.includes("type: 'antv-dagre'"));
 assert.ok(!renderer.includes("'drag-element'"));
 assert.ok(!renderer.includes("emit('layout-change'"));

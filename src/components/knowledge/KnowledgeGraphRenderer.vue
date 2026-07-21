@@ -231,6 +231,7 @@ async function renderGraph(requestId) {
             pointerEvents: 'none',
             labelText: `0${node.stageIndex + 1}  ${node.label}  ·  ${node.nodeCount} 个知识点`,
             labelPlacement: 'top-left',
+            labelTextAlign: 'left',
             labelOffsetX: 16,
             labelOffsetY: 17,
             labelFontSize: 12,
