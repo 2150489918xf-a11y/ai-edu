@@ -19,6 +19,10 @@ const emit = defineEmits(['select-node', 'select-edge']);
 const containerRef = ref(null);
 let graph = null;
 let resizeObserver = null;
+let renderQueue = Promise.resolve();
+let renderRequestId = 0;
+let graphReady = false;
+let componentDestroyed = false;
 
 const palette = ['#2c8a62', '#347fb2', '#bd7c38', '#8e6ab5', '#bf6c6a', '#2f9b96', '#7a8660'];
 const pathColors = {
@@ -173,25 +177,27 @@ function isEdgeDimmed(edge) {
 }
 
 async function fitCanvas(animation = false) {
-  if (!graph) return;
+  if (!graphReady || !graph) return;
   await graph.fitView({ animation, padding: COMPACT_LAYOUT.fitPadding });
 }
 
 async function zoomIn() {
-  if (!graph) return;
+  if (!graphReady || !graph) return;
   await graph.zoomTo(Math.min(2, graph.getZoom() * 1.16), { duration: 160 });
 }
 
 async function zoomOut() {
-  if (!graph) return;
+  if (!graphReady || !graph) return;
   await graph.zoomTo(Math.max(0.35, graph.getZoom() / 1.16), { duration: 160 });
 }
 
-async function renderGraph() {
+async function renderGraph(requestId) {
   await nextTick();
+  if (componentDestroyed || requestId !== renderRequestId) return;
   const container = containerRef.value;
   if (!container) return;
 
+  graphReady = false;
   if (graph) {
     graph.destroy();
     graph = null;
@@ -200,7 +206,7 @@ async function renderGraph() {
   const data = normalizedData.value;
   if (!data.nodes.length) return;
 
-  graph = new Graph({
+  const nextGraph = new Graph({
     container,
     data,
     node: {
@@ -293,45 +299,66 @@ async function renderGraph() {
     behaviors: ['drag-canvas', 'zoom-canvas']
   });
 
-  graph.on('node:click', (event) => {
+  graph = nextGraph;
+
+  nextGraph.on('node:click', (event) => {
     const id = eventElementId(event);
     const node = props.graphData?.nodes?.find((item) => item.id === id);
     if (node) emit('select-node', node);
   });
-  graph.on('edge:click', (event) => {
+  nextGraph.on('edge:click', (event) => {
     const id = eventElementId(event);
     const edge = props.graphData?.edges?.find((item) => item.id === id);
     if (edge) emit('select-edge', edge);
   });
-  graph.on('canvas:dblclick', () => fitCanvas(true));
+  nextGraph.on('canvas:dblclick', () => fitCanvas(true));
 
-  await graph.render();
-  await fitCanvas(false);
+  await nextGraph.render();
+  if (componentDestroyed || graph !== nextGraph) return;
+  await nextGraph.fitView({ animation: false, padding: COMPACT_LAYOUT.fitPadding });
+  if (componentDestroyed || graph !== nextGraph) return;
+  graphReady = true;
+}
+
+function reportRenderError(error) {
+  if (!componentDestroyed) console.error('知识图谱渲染失败', error);
+}
+
+function requestGraphRender() {
+  const requestId = ++renderRequestId;
+  renderQueue = renderQueue
+    .then(() => renderGraph(requestId))
+    .catch(reportRenderError);
 }
 
 async function refreshGraphState() {
-  if (!graph) return;
+  if (!graphReady || !graph) return;
   await graph.draw();
 }
 
 onMounted(() => {
-  renderGraph();
+  componentDestroyed = false;
+  requestGraphRender();
   resizeObserver = new ResizeObserver(() => {
-    graph?.resize();
+    if (!graphReady || !graph) return;
+    graph.resize();
     fitCanvas(false);
   });
   if (containerRef.value) resizeObserver.observe(containerRef.value);
 });
 
 onBeforeUnmount(() => {
+  componentDestroyed = true;
+  renderRequestId += 1;
+  graphReady = false;
   resizeObserver?.disconnect();
   resizeObserver = null;
   graph?.destroy();
   graph = null;
 });
 
-watch(graphRenderKey, renderGraph);
-watch(() => props.layoutKey, renderGraph);
+watch(graphRenderKey, requestGraphRender);
+watch(() => props.layoutKey, requestGraphRender);
 watch(() => props.fitRequest, () => fitCanvas(true));
 
 watch(
