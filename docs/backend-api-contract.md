@@ -594,6 +594,29 @@ Response：
 6. 实现学生答题提交接口。
 7. 前端把 `mockApi.js` 中对应函数切到真实 HTTP API。
 
+## 课程题析接口
+
+课程题析默认聚合整门课程，可通过 `classId` 和 `sessionId` 逐级缩小范围。客观统计只读取 PostgreSQL；AI 报告仅在教师主动触发时调用 DeepSeek，并按课程、班级或课堂场次分别持久化。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/v1/courses/{courseId}/analysis?classId=&sessionId=` | 获取课程 KPI、题目统计、作答明细、筛选项和当前范围最新报告 |
+| GET | `/api/v1/courses/{courseId}/analysis/questions/{questionId}?classId=&sessionId=` | 获取单题答案分布、学生提交和错误学生 |
+| POST | `/api/v1/courses/{courseId}/analysis/reports/stream` | 流式生成并保存当前范围 AI 报告，SSE 事件为 `delta`、`section`、`report`、`done`、`error` |
+| GET | `/api/v1/course-analysis-reports/{reportId}/context` | 获取供 AI 生题引用的可信报告上下文 |
+
+报告生成请求：
+
+```json
+{
+  "classId": "class-1",
+  "sessionId": "session-1",
+  "prompt": "重点分析受力图绘制错误"
+}
+```
+
+题库 AI 生成接口可额外接收 `analysisReportId`。服务端根据该 ID 读取报告上下文，不接受客户端直接提交的原始报告内容。
+
 ## 验收标准
 
 - 本地执行 `docker compose up -d` 后能启动 PostgreSQL。
