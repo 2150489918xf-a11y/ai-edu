@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { demoQuestionBankCatalog } from '../prisma/demoQuestionBankCatalog.js';
 import { seedDemoQuestionBanks } from '../prisma/seedDemoQuestionBanks.js';
 
-function createRecordingPrisma(courseIds) {
+function createRecordingPrisma(courseRows) {
   const calls = {
     questionBank: [],
     knowledgePoint: [],
@@ -20,7 +21,7 @@ function createRecordingPrisma(courseIds) {
     calls,
     course: {
       async findMany() {
-        return courseIds.map((id) => ({ id }));
+        return courseRows.map((course) => typeof course === 'string' ? { id: course } : course);
       }
     },
     questionBank: model('questionBank'),
@@ -81,6 +82,14 @@ for (const call of prisma.calls.knowledgeRelation) {
   assert.match(call.where.id, /^demo-rel-/);
   assert.equal(call.create.manualLocked, true);
 }
+
+const forceBank = demoQuestionBankCatalog.find((bank) => bank.id === 'demo-bank-physics-force-equilibrium');
+const fallbackPrisma = createRecordingPrisma([{ id: 'course-physics-fallback', subject: '物理' }]);
+await seedDemoQuestionBanks(fallbackPrisma, [forceBank]);
+assert.ok(
+  fallbackPrisma.calls.question.every((call) => call.create.courseId === 'course-physics-fallback'),
+  '精确课程不存在时，题目应回退关联同学科课程'
+);
 
 const source = readFileSync(new URL('../prisma/seedDemoQuestionBanks.js', import.meta.url), 'utf8');
 assert.ok(!source.includes('deleteMany'), '演示数据脚本禁止调用 deleteMany');

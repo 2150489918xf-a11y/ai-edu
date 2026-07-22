@@ -23,27 +23,42 @@ function questionStatistics(index) {
 
 export async function seedDemoQuestionBanks(prisma, catalog = demoQuestionBankCatalog) {
   const requestedCourseIds = [...new Set(catalog.map((bank) => bank.courseId).filter(Boolean))];
+  const requestedSubjects = [...new Set(catalog.map((bank) => bank.subject).filter(Boolean))];
   const courses = await prisma.course.findMany({
     where: {
-      id: { in: requestedCourseIds },
       status: 'active',
-      deletedAt: null
+      deletedAt: null,
+      OR: [
+        { id: { in: requestedCourseIds } },
+        { subject: { in: requestedSubjects } }
+      ]
     },
-    select: { id: true }
+    select: { id: true, subject: true },
+    orderBy: { createdAt: 'asc' }
   });
   const availableCourseIds = new Set(courses.map((course) => course.id));
+  const fallbackCourseBySubject = new Map();
+  for (const course of courses) {
+    if (course.subject && !fallbackCourseBySubject.has(course.subject)) {
+      fallbackCourseBySubject.set(course.subject, course.id);
+    }
+  }
+  const linkedCourseIds = new Set();
   const summary = {
     banks: 0,
     questions: 0,
     knowledgePoints: 0,
     questionKnowledgeLinks: 0,
     relations: 0,
-    linkedCourses: availableCourseIds.size
+    linkedCourses: 0
   };
 
   for (const bank of catalog) {
     await prisma.$transaction(async (tx) => {
-      const linkedCourseId = availableCourseIds.has(bank.courseId) ? bank.courseId : null;
+      const linkedCourseId = availableCourseIds.has(bank.courseId)
+        ? bank.courseId
+        : fallbackCourseBySubject.get(bank.subject) || null;
+      if (linkedCourseId) linkedCourseIds.add(linkedCourseId);
       const bankData = {
         title: bank.title,
         subject: bank.subject,
@@ -166,6 +181,7 @@ export async function seedDemoQuestionBanks(prisma, catalog = demoQuestionBankCa
     });
   }
 
+  summary.linkedCourses = linkedCourseIds.size;
   return summary;
 }
 
