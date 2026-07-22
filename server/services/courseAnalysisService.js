@@ -103,7 +103,7 @@ export function createCourseAnalysisService(prisma) {
     const sessions = allSessions.filter((item) => (!filters.classId || item.classId === filters.classId) && (!filters.sessionId || item.id === filters.sessionId));
     if (filters.classId && !allSessions.some((item) => item.classId === filters.classId)) throw httpError(404, 'NOT_FOUND', '班级没有当前课程的课堂数据');
 
-    const questionMap = new Map(asArray(course.questions).map((item) => [item.id, item]));
+    const questionMap = new Map(filters.sessionId ? [] : asArray(course.questions).map((item) => [item.id, item]));
     for (const session of sessions) {
       for (const link of asArray(session.sessionQuestions)) {
         if (link.question?.status !== 'active' || link.question?.deletedAt) continue;

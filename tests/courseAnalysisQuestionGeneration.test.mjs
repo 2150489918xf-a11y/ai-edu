@@ -14,5 +14,7 @@ assert.match(page, /route\.query\.analysisReportId/);
 assert.match(page, /fetchCourseAnalysisReportContext/);
 assert.match(page, /已引用学情报告/);
 assert.match(page, /analysisReportId/);
+assert.match(page, /reportWeakPoints/);
+assert.match(page, /analysisReportContext\.value \?/);
 
 console.log('course analysis question generation contract passed');

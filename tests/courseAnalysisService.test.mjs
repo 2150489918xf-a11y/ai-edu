@@ -5,6 +5,7 @@ const now = new Date('2026-07-22T08:00:00Z');
 const questions = [
   { id: 'q-weak', courseId: 'course-1', title: '薄弱题', type: 'choice', difficulty: '中等', options: ['A', 'B'], answer: { value: 'A' }, analysis: '先分析条件', knowledge: ['受力'], weakPoint: '受力分析', status: 'active', deletedAt: null, createdAt: now, updatedAt: now },
   { id: 'q-good', courseId: 'course-1', title: '掌握题', type: 'blank', difficulty: '基础', options: [], answer: { value: '2' }, analysis: '', knowledge: ['计算'], weakPoint: null, status: 'active', deletedAt: null, createdAt: now, updatedAt: now }
+  ,{ id: 'q-unused', courseId: 'course-1', title: '未下发题', type: 'choice', difficulty: '基础', options: ['A'], answer: { value: 'A' }, analysis: '', knowledge: ['拓展'], weakPoint: null, status: 'active', deletedAt: null, createdAt: now, updatedAt: now }
 ];
 
 function answer(id, sessionId, studentId, question, value, isCorrect, durationSeconds, minute) {
@@ -15,7 +16,7 @@ const sessions = [
   {
     id: 's-1', courseId: 'course-1', classId: 'c-1', title: '一班课堂', status: 'completed', startedAt: now,
     class: { id: 'c-1', name: '高一（1）班' },
-    sessionQuestions: questions.map((question, index) => ({ sortOrder: index, question })),
+    sessionQuestions: questions.slice(0, 2).map((question, index) => ({ sortOrder: index, question })),
     answers: [
       answer('a1', 's-1', '1', questions[0], 'B', false, 40, '01'),
       answer('a2', 's-1', '2', questions[0], 'A', true, 20, '02'),
@@ -25,7 +26,7 @@ const sessions = [
   {
     id: 's-2', courseId: 'course-1', classId: 'c-2', title: '二班课堂', status: 'completed', startedAt: now,
     class: { id: 'c-2', name: '高一（2）班' },
-    sessionQuestions: questions.map((question, index) => ({ sortOrder: index, question })),
+    sessionQuestions: questions.slice(0, 2).map((question, index) => ({ sortOrder: index, question })),
     answers: [
       answer('a4', 's-2', '3', questions[0], 'B', false, 30, '04'),
       answer('a5', 's-2', '3', questions[1], '2', true, 20, '05')
@@ -67,6 +68,8 @@ assert.ok(all.source.fingerprint);
 const classOnly = await service.getCourseAnalysis('course-1', { classId: 'c-1' });
 assert.equal(classOnly.summary.answerCount, 3);
 assert.equal(classOnly.filters.sessions.length, 1);
+const sessionOnly = await service.getCourseAnalysis('course-1', { sessionId: 's-1' });
+assert.equal(sessionOnly.questionStats.length, 2);
 
 await assert.rejects(() => service.getCourseAnalysis('course-1', { sessionId: 'missing' }), /课堂场次/);
 

@@ -13,7 +13,7 @@ const chatLoading = ref(false);
 const saving = ref(false);
 const selected = ref([]);
 const candidateQuestions = ref([]);
-const currentBank = ref(getBank(route.params.bankId));
+const currentBank = ref(getBank(route.params.bankId) || { title: '正在加载题库', subject: '', grade: '' });
 const analysisReportId = ref(String(route.query.analysisReportId || ''));
 const analysisReportContext = ref(null);
 const selectedAnalysisId = ref('newton-q3');
@@ -32,6 +32,7 @@ const selectedAnalysisQuestion = computed(() => store.questions.find((question) 
 const selectedQuestions = computed(() => candidateQuestions.value.filter((question) => selected.value.includes(question.id)));
 const editingQuestion = computed(() => candidateQuestions.value.find((question) => question.id === editingQuestionId.value) || null);
 const candidateLoading = computed(() => chatLoading.value && !candidateQuestions.value.length);
+const reportWeakPoints = computed(() => (analysisReportContext.value?.weakPoints || []).map((item) => item.name).filter(Boolean));
 
 function stripQuestionBlocks(text) {
   return String(text)
@@ -159,9 +160,12 @@ function getRequestMode(text) {
 }
 
 function buildStructuredPrompt() {
+  const focus = reportWeakPoints.value.length
+    ? reportWeakPoints.value.join('、')
+    : selectedAnalysisQuestion.value?.title || '当前薄弱点';
   return [
     `围绕${currentBank.value?.title || '当前题库'}生成课堂检测题。`,
-    `重点参考学情：${selectedAnalysisQuestion.value?.title || '当前薄弱点'}。`,
+    `重点参考学情：${focus}。`,
     '题型数量：单选 3 道，多选 1 道，计算 2 道。',
     '难度分布：基础 40%，理解 40%，提升 20%。'
   ].join('\n');
@@ -177,7 +181,7 @@ function buildAiRequest(text, mode) {
     prompt: text,
     mode,
     analysisReportId: analysisReportId.value || undefined,
-    analysis: {
+    analysis: analysisReportContext.value ? {} : {
       id: selectedAnalysisId.value,
       title: selectedAnalysisQuestion.value?.title || '',
       accuracy: selectedAnalysisQuestion.value?.accuracy ?? null,
@@ -302,7 +306,7 @@ async function loadBank() {
   try {
     currentBank.value = await getQuestionBank(route.params.bankId);
   } catch {
-    currentBank.value = getBank(route.params.bankId);
+    currentBank.value = getBank(route.params.bankId) || { title: '题库加载失败', subject: '', grade: '' };
   }
 }
 
@@ -353,6 +357,7 @@ watch(() => route.params.bankId, loadBank);
           <button type="button" aria-label="移除学情报告引用" @click="removeAnalysisReportReference"><span class="material-symbols-outlined">close</span></button>
         </div>
         <span class="small-chip">生成设置</span>
+        <template v-if="!analysisReportContext">
         <label class="form-label">引用学情分析</label>
         <div class="analysis-reference">
           <button
@@ -370,15 +375,19 @@ watch(() => route.params.bankId, loadBank);
           <span class="small-chip"><span class="material-symbols-outlined">analytics</span>已引用</span>
           <p>{{ selectedAnalysis.advice }}</p>
         </div>
+        </template>
+        <div v-else class="analysis-source">
+          <span class="small-chip"><span class="material-symbols-outlined">analytics</span>真实报告</span>
+          <p>{{ analysisReportContext.summary?.overview || '已引用当前课程范围的持久化学情报告。' }}</p>
+        </div>
         <div class="settings-note">
           <span class="material-symbols-outlined">chat</span>
           <p>自然语言要求请直接在右侧 AI 输入框里补充；左侧只保留可复用的生成参数。</p>
         </div>
         <label class="form-label">知识点</label>
         <div class="fake-chip-input">
-          <span>F=ma ×</span>
-          <span>合力方向 ×</span>
-          <span>摩擦力参与计算 ×</span>
+          <template v-if="reportWeakPoints.length"><span v-for="point in reportWeakPoints" :key="point">{{ point }} ×</span></template>
+          <template v-else><span>从当前学情提取 ×</span></template>
         </div>
         <label class="form-label">题型与数量</label>
         <div class="choice-grid">
@@ -418,7 +427,7 @@ watch(() => route.params.bankId, loadBank);
         <div v-if="candidateLoading" class="generation-loading">
           <span class="material-symbols-outlined">auto_awesome</span>
           <strong>AI 正在组织题干、选项和解析</strong>
-          <p>正在引用“{{ selectedAnalysisQuestion.title }}”的学情分析，补强薄弱知识点。</p>
+          <p>正在引用“{{ analysisReportContext?.course?.title || selectedAnalysisQuestion?.title || '当前课程' }}”的学情分析，补强薄弱知识点。</p>
         </div>
 
         <div v-else-if="candidateQuestions.length" class="list-panel">
