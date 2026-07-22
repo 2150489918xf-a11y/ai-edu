@@ -21,6 +21,8 @@ import { createStudentAnalysisService } from './services/studentAnalysisService.
 import { createAiStudentTutorService } from './services/aiStudentTutorService.js';
 import { createAuthService } from './services/authService.js';
 import { createAdminService } from './services/adminService.js';
+import { createCourseAnalysisService } from './services/courseAnalysisService.js';
+import { createAiCourseAnalysisService } from './services/aiCourseAnalysisService.js';
 
 loadEnvFile();
 
@@ -37,6 +39,7 @@ const studentLearningService = createStudentLearningService(prisma);
 const studentAnalysisService = createStudentAnalysisService(prisma);
 const authService = createAuthService(prisma);
 const adminService = createAdminService(prisma);
+const courseAnalysisService = createCourseAnalysisService(prisma);
 const aiMindMapService = createAiMindMapService();
 const aiOutlineService = createAiOutlineService();
 const aiQuestionService = createAiQuestionService();
@@ -47,6 +50,7 @@ const questionBankService = createQuestionBankService(prisma, { questionKnowledg
 const questionKnowledgeWorker = createQuestionKnowledgeWorker({ graphService: questionKnowledgeGraphService });
 const aiStudentTutorService = createAiStudentTutorService();
 const aiStudentPracticeService = createAiStudentPracticeService(prisma, { studentAnalysisService });
+const aiCourseAnalysisService = createAiCourseAnalysisService({ courseAnalysisService });
 const app = createLearningApiApp({
   adminService,
   authService,
@@ -64,7 +68,9 @@ const app = createLearningApiApp({
   aiQuestionService,
   aiStudentTutorService,
   aiStudentPracticeService,
-  aiLessonPlanService
+  aiLessonPlanService,
+  courseAnalysisService,
+  aiCourseAnalysisService
 });
 const server = createServer(app);
 

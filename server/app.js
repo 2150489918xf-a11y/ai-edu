@@ -35,7 +35,9 @@ export function createLearningApiApp({
   aiQuestionService,
   aiStudentTutorService,
   aiStudentPracticeService,
-  aiLessonPlanService
+  aiLessonPlanService,
+  courseAnalysisService,
+  aiCourseAnalysisService
 }) {
   if (!learningService) {
     throw new Error('learningService is required');
@@ -56,6 +58,52 @@ export function createLearningApiApp({
     try {
       if (req.method === 'GET' && path === '/api/v1/health') {
         sendJson(res, 200, { data: { ok: true } });
+        return;
+      }
+
+      const courseAnalysisQuestionMatch = path.match(/^\/api\/v1\/courses\/([^/]+)\/analysis\/questions\/([^/]+)$/);
+      if (courseAnalysisService && req.method === 'GET' && courseAnalysisQuestionMatch) {
+        const data = await courseAnalysisService.getQuestionDetail(
+          decodeURIComponent(courseAnalysisQuestionMatch[1]),
+          decodeURIComponent(courseAnalysisQuestionMatch[2]),
+          { classId: url.searchParams.get('classId') || undefined, sessionId: url.searchParams.get('sessionId') || undefined }
+        );
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      const courseAnalysisStreamMatch = path.match(/^\/api\/v1\/courses\/([^/]+)\/analysis\/reports\/stream$/);
+      if (courseAnalysisService && aiCourseAnalysisService && req.method === 'POST' && courseAnalysisStreamMatch) {
+        const body = await readJsonBody(req);
+        startSse(res);
+        try {
+          await aiCourseAnalysisService.streamReport({ ...body, courseId: decodeURIComponent(courseAnalysisStreamMatch[1]) }, {
+            onDelta: (text) => sendSse(res, 'delta', { text }),
+            onSection: (section) => sendSse(res, 'section', { section }),
+            onReport: (report) => sendSse(res, 'report', { report }),
+            onDone: (meta) => sendSse(res, 'done', meta)
+          });
+        } catch (error) {
+          sendSse(res, 'error', { code: error.code || 'AI_ANALYSIS_FAILED', message: error.message || 'AI 学情分析失败' });
+        }
+        res.end();
+        return;
+      }
+
+      const courseAnalysisMatch = path.match(/^\/api\/v1\/courses\/([^/]+)\/analysis$/);
+      if (courseAnalysisService && req.method === 'GET' && courseAnalysisMatch) {
+        const data = await courseAnalysisService.getCourseAnalysis(decodeURIComponent(courseAnalysisMatch[1]), {
+          classId: url.searchParams.get('classId') || undefined,
+          sessionId: url.searchParams.get('sessionId') || undefined
+        });
+        sendJson(res, 200, { data });
+        return;
+      }
+
+      const courseAnalysisContextMatch = path.match(/^\/api\/v1\/course-analysis-reports\/([^/]+)\/context$/);
+      if (courseAnalysisService && req.method === 'GET' && courseAnalysisContextMatch) {
+        const data = await courseAnalysisService.getReportContext(decodeURIComponent(courseAnalysisContextMatch[1]));
+        sendJson(res, 200, { data });
         return;
       }
 
