@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import AfterClassPage from './pages/AfterClassPage.vue';
-import AdminOfficePage from './pages/admin/AdminOfficePage.vue';
+import AdminLayout from './layouts/AdminLayout.vue';
 import CoursesPage from './pages/CoursesPage.vue';
 import HomePage from './pages/HomePage.vue';
 import InClassPlayPage from './pages/InClassPlayPage.vue';
@@ -29,13 +29,32 @@ const StudentCoursesPage = () => import('./pages/student/StudentCoursesPage.vue'
 const StudentPracticePage = () => import('./pages/student/StudentPracticePage.vue');
 const QuestionBankKnowledgeGraphPage = () => import('./pages/QuestionBankKnowledgeGraphPage.vue');
 const KnowledgeBaseKnowledgeGraphPage = () => import('./pages/KnowledgeBaseKnowledgeGraphPage.vue');
+const AdminOverviewPage = () => import('./pages/admin/AdminOverviewPage.vue');
+const AdminTeachersPage = () => import('./pages/admin/AdminTeachersPage.vue');
+const AdminStudentsPage = () => import('./pages/admin/AdminStudentsPage.vue');
+const AdminClassesPage = () => import('./pages/admin/AdminClassesPage.vue');
+const AdminCoursesPage = () => import('./pages/admin/AdminCoursesPage.vue');
+const AdminEnrollmentsPage = () => import('./pages/admin/AdminEnrollmentsPage.vue');
 
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', name: 'login', component: LoginPage, meta: { fullscreen: true } },
     { path: '/admin/login', name: 'admin-login', component: LoginPage, meta: { fullscreen: true } },
-    { path: '/admin', name: 'admin-office', component: AdminOfficePage, meta: { fullscreen: true } },
+    {
+      path: '/admin',
+      component: AdminLayout,
+      meta: { fullscreen: true },
+      redirect: '/admin/overview',
+      children: [
+        { path: 'overview', name: 'admin-overview', component: AdminOverviewPage, meta: { title: '工作台' } },
+        { path: 'teachers', name: 'admin-teachers', component: AdminTeachersPage, meta: { title: '教师管理' } },
+        { path: 'students', name: 'admin-students', component: AdminStudentsPage, meta: { title: '学生管理' } },
+        { path: 'classes', name: 'admin-classes', component: AdminClassesPage, meta: { title: '班级管理' } },
+        { path: 'courses', name: 'admin-courses', component: AdminCoursesPage, meta: { title: '课程管理' } },
+        { path: 'enrollments', name: 'admin-enrollments', component: AdminEnrollmentsPage, meta: { title: '课程分配' } }
+      ]
+    },
     { path: '/', name: 'home', component: HomePage },
     { path: '/preclass/courses', name: 'courses', component: CoursesPage },
     {
