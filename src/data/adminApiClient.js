@@ -95,8 +95,14 @@ export async function archiveAdminTeacher(teacherId) {
   return payload.data;
 }
 
+export async function restoreAdminTeacher(teacherId) {
+  const payload = await requestJson(`/admin/teachers/${encodeURIComponent(teacherId)}/restore`, { method: 'POST' });
+  clearAdminMutationCaches();
+  return payload.data;
+}
+
 export async function listAdminStudents(filters = {}, options = {}) {
-  const payload = await cachedRequestJson(`/students${buildQuery(filters)}`, options);
+  const payload = await cachedRequestJson(`/admin/students${buildQuery(filters)}`, options);
   return {
     data: payload.data || [],
     meta: payload.meta || {},
@@ -104,20 +110,92 @@ export async function listAdminStudents(filters = {}, options = {}) {
   };
 }
 
+export async function createAdminStudent(student) {
+  const payload = await requestJson('/admin/students', { method: 'POST', body: JSON.stringify(student) });
+  clearAdminMutationCaches();
+  return payload.data;
+}
+
+export async function updateAdminStudent(studentId, patch) {
+  const payload = await requestJson(`/admin/students/${encodeURIComponent(studentId)}`, { method: 'PATCH', body: JSON.stringify(patch) });
+  clearAdminMutationCaches();
+  return payload.data;
+}
+
+export async function archiveAdminStudent(studentId) {
+  const payload = await requestJson(`/admin/students/${encodeURIComponent(studentId)}`, { method: 'DELETE' });
+  clearAdminMutationCaches();
+  return payload.data;
+}
+
+export async function restoreAdminStudent(studentId) {
+  const payload = await requestJson(`/admin/students/${encodeURIComponent(studentId)}/restore`, { method: 'POST' });
+  clearAdminMutationCaches();
+  return payload.data;
+}
+
 export async function listAdminClasses(filters = {}, options = {}) {
-  const payload = await cachedRequestJson(`/classes${buildQuery(filters)}`, options);
+  const payload = await cachedRequestJson(`/admin/classes${buildQuery(filters)}`, options);
   return {
     data: payload.data || [],
     pagination: payload.pagination || { page: 1, pageSize: 20, total: 0 }
   };
 }
 
+export async function createAdminClass(classItem) {
+  const payload = await requestJson('/admin/classes', { method: 'POST', body: JSON.stringify(classItem) });
+  clearAdminMutationCaches();
+  return payload.data;
+}
+
+export async function updateAdminClass(classId, patch) {
+  const payload = await requestJson(`/admin/classes/${encodeURIComponent(classId)}`, { method: 'PATCH', body: JSON.stringify(patch) });
+  clearAdminMutationCaches();
+  return payload.data;
+}
+
+export async function archiveAdminClass(classId) {
+  const payload = await requestJson(`/admin/classes/${encodeURIComponent(classId)}`, { method: 'DELETE' });
+  clearAdminMutationCaches();
+  return payload.data;
+}
+
+export async function restoreAdminClass(classId) {
+  const payload = await requestJson(`/admin/classes/${encodeURIComponent(classId)}/restore`, { method: 'POST' });
+  clearAdminMutationCaches();
+  return payload.data;
+}
+
 export async function listAdminCourses(filters = {}, options = {}) {
-  const payload = await cachedRequestJson(`/courses${buildQuery(filters)}`, options);
+  const payload = await cachedRequestJson(`/admin/courses${buildQuery(filters)}`, options);
   return {
     data: payload.data || [],
     pagination: payload.pagination || { page: 1, pageSize: 20, total: 0 }
   };
+}
+
+export async function createAdminCourse(course) {
+  const payload = await requestJson('/admin/courses', { method: 'POST', body: JSON.stringify(course) });
+  clearAdminMutationCaches();
+  return payload.data;
+}
+
+export async function updateAdminCourse(courseId, patch) {
+  const payload = await requestJson(`/admin/courses/${encodeURIComponent(courseId)}`, { method: 'PATCH', body: JSON.stringify(patch) });
+  clearAdminMutationCaches();
+  return payload.data;
+}
+
+export async function archiveAdminCourse(courseId) {
+  const payload = await requestJson(`/admin/courses/${encodeURIComponent(courseId)}`, { method: 'DELETE' });
+  clearAdminMutationCaches();
+  return payload.data;
+}
+
+export async function restoreAdminCourse(courseId) {
+  const payload = await requestJson(`/admin/courses/${encodeURIComponent(courseId)}/restore`, { method: 'POST' });
+  clearAdminMutationCaches();
+  return payload.data;
 }
 
 export async function getStudentEnrollments(studentId, options = {}) {
