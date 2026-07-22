@@ -17,6 +17,8 @@ function normalizeCourse(course) {
       grade: course.group.grade,
       teacher: course.group.teacher?.name || ''
     } : null,
+    teacherId: course.teacherId || null,
+    teacher: course.teacher?.name || course.group?.teacher?.name || '',
     unitType: course.unitType || 'lesson',
     sortOrder: course.sortOrder || 0,
     title: course.title,
@@ -238,6 +240,7 @@ export function createCourseService(prisma) {
         prisma.course.findMany({
           where,
           include: {
+            teacher: true,
             group: {
               include: { teacher: true }
             }
@@ -263,6 +266,7 @@ export function createCourseService(prisma) {
         data: {
           ...(normalizeText(payload.id) ? { id: normalizeText(payload.id) } : {}),
           ...(groupId ? { groupId } : {}),
+          ...(normalizeText(payload.teacherId) ? { teacherId: normalizeText(payload.teacherId) } : {}),
           title: normalizeText(payload.title),
           subject: normalizeText(payload.subject),
           grade: normalizeText(payload.grade),
@@ -284,13 +288,14 @@ export function createCourseService(prisma) {
         }
       });
 
-      return normalizeCourse(course);
+      return this.getCourse(course.id);
     },
 
     async getCourse(courseId) {
       const course = await prisma.course.findUnique({
         where: { id: courseId },
         include: {
+          teacher: true,
           group: {
             include: { teacher: true }
           }
@@ -325,6 +330,7 @@ export function createCourseService(prisma) {
       if ('unitType' in payload) data.unitType = normalizeText(payload.unitType) || 'lesson';
       if ('sortOrder' in payload) data.sortOrder = Number.isFinite(Number(payload.sortOrder)) ? Number(payload.sortOrder) : 0;
       if ('groupId' in payload) data.groupId = await resolveCourseGroupId(prisma, payload);
+      if ('teacherId' in payload) data.teacherId = normalizeText(payload.teacherId) || null;
 
       if ('title' in data && !data.title) {
         throw createHttpError(400, 'BAD_REQUEST', '课程名称不能为空');
@@ -338,7 +344,8 @@ export function createCourseService(prisma) {
 
       const course = await prisma.course.update({
         where: { id: courseId },
-        data
+        data,
+        include: { teacher: true, group: { include: { teacher: true } } }
       });
 
       return normalizeCourse(course);
@@ -352,7 +359,8 @@ export function createCourseService(prisma) {
         data: {
           status: 'archived',
           deletedAt: new Date()
-        }
+        },
+        include: { teacher: true, group: { include: { teacher: true } } }
       });
 
       return normalizeCourse(course);
@@ -366,7 +374,8 @@ export function createCourseService(prisma) {
         data: {
           status: 'active',
           deletedAt: null
-        }
+        },
+        include: { teacher: true, group: { include: { teacher: true } } }
       });
 
       return normalizeCourse(course);

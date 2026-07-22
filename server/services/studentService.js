@@ -1,3 +1,5 @@
+import { hashPassword } from './authService.js';
+
 function createHttpError(statusCode, code, message, details = {}) {
   const error = new Error(message);
   error.statusCode = statusCode;
@@ -33,6 +35,8 @@ function normalizeStudent(student) {
 
   return {
     id: student.id,
+    userId: student.userId || null,
+    username: student.user?.username || '',
     name: student.name,
     classId: student.classId,
     className: student.class?.name || student.className,
@@ -60,7 +64,8 @@ function buildStudentWhere(filters = {}, targetClassId) {
   if (filters.keyword) {
     where.OR = [
       { name: { contains: filters.keyword, mode: 'insensitive' } },
-      { studentNo: { contains: filters.keyword, mode: 'insensitive' } }
+      { studentNo: { contains: filters.keyword, mode: 'insensitive' } },
+      { user: { username: { contains: filters.keyword, mode: 'insensitive' } } }
     ];
   }
 
@@ -86,6 +91,7 @@ export function createStudentService(prisma) {
           where,
           include: {
             class: true,
+            user: true,
             learningProfiles: {
               orderBy: { updatedAt: 'desc' },
               take: 1
@@ -108,21 +114,38 @@ export function createStudentService(prisma) {
     async createStudent(payload = {}) {
       validateRequiredStudentFields(payload);
 
-      const classItem = await prisma.class.findUnique({ where: { id: payload.classId } });
-      if (!classItem) throw createHttpError(404, 'NOT_FOUND', '班级不存在');
+      const classItem = await prisma.class.findFirst({
+        where: { id: payload.classId, status: 'active', deletedAt: null }
+      });
+      if (!classItem) throw createHttpError(404, 'NOT_FOUND', '班级不存在或未启用');
 
-      const student = await prisma.student.create({
-        data: {
-          name: normalizeText(payload.name),
-          classId: normalizeText(payload.classId),
-          studentNo: normalizeText(payload.studentNo) || null,
-          attendance: normalizeText(payload.attendance) || null,
-          practiceCount: Number(payload.practiceCount || 0)
-        },
-        include: {
-          class: true,
-          learningProfiles: { orderBy: { updatedAt: 'desc' }, take: 1 }
-        }
+      const username = normalizeText(payload.username);
+      const student = await prisma.$transaction(async (tx) => {
+        const user = username
+          ? await tx.user.create({
+              data: {
+                username,
+                passwordHash: hashPassword(String(payload.password || 'student123')),
+                role: 'student',
+                status: 'active'
+              }
+            })
+          : null;
+        return tx.student.create({
+          data: {
+            ...(user ? { userId: user.id } : {}),
+            name: normalizeText(payload.name),
+            classId: normalizeText(payload.classId),
+            studentNo: normalizeText(payload.studentNo) || null,
+            attendance: normalizeText(payload.attendance) || null,
+            practiceCount: Number(payload.practiceCount || 0)
+          },
+          include: {
+            class: true,
+            user: true,
+            learningProfiles: { orderBy: { updatedAt: 'desc' }, take: 1 }
+          }
+        });
       });
 
       return normalizeStudent(student);
@@ -133,6 +156,7 @@ export function createStudentService(prisma) {
         where: { id: studentId },
         include: {
           class: true,
+          user: true,
           learningProfiles: { orderBy: { updatedAt: 'desc' }, take: 1 }
         }
       });
@@ -148,6 +172,14 @@ export function createStudentService(prisma) {
       if ('studentNo' in payload) data.studentNo = normalizeText(payload.studentNo) || null;
       if ('attendance' in payload) data.attendance = normalizeText(payload.attendance) || null;
       if ('practiceCount' in payload) data.practiceCount = Number(payload.practiceCount || 0);
+      if ('classId' in payload) {
+        const classId = normalizeText(payload.classId);
+        const classItem = await prisma.class.findFirst({
+          where: { id: classId, status: 'active', deletedAt: null }
+        });
+        if (!classItem) throw createHttpError(404, 'NOT_FOUND', '班级不存在或未启用');
+        data.classId = classId;
+      }
 
       if ('name' in data && !data.name) {
         throw createHttpError(400, 'BAD_REQUEST', '学生姓名不能为空');
@@ -158,6 +190,7 @@ export function createStudentService(prisma) {
         data,
         include: {
           class: true,
+          user: true,
           learningProfiles: { orderBy: { updatedAt: 'desc' }, take: 1 }
         }
       });
@@ -178,6 +211,7 @@ export function createStudentService(prisma) {
         data: { classId: payload.classId },
         include: {
           class: true,
+          user: true,
           learningProfiles: { orderBy: { updatedAt: 'desc' }, take: 1 }
         }
       });
@@ -186,27 +220,45 @@ export function createStudentService(prisma) {
     },
 
     async archiveStudent(studentId) {
-      await this.getStudent(studentId);
-      const student = await prisma.student.update({
-        where: { id: studentId },
-        data: { status: 'archived', deletedAt: new Date() },
-        include: {
-          class: true,
-          learningProfiles: { orderBy: { updatedAt: 'desc' }, take: 1 }
+      const existing = await prisma.student.findUnique({ where: { id: studentId }, select: { userId: true } });
+      if (!existing) throw createHttpError(404, 'NOT_FOUND', '学生不存在');
+      const student = await prisma.$transaction(async (tx) => {
+        const updated = await tx.student.update({
+          where: { id: studentId },
+          data: { status: 'archived', deletedAt: new Date() },
+          include: {
+            class: true,
+            user: true,
+            learningProfiles: { orderBy: { updatedAt: 'desc' }, take: 1 }
+          }
+        });
+        if (existing.userId) {
+          await tx.user.update({ where: { id: existing.userId }, data: { status: 'archived' } });
+          updated.user.status = 'archived';
         }
+        return updated;
       });
       return normalizeStudent(student);
     },
 
     async restoreStudent(studentId) {
-      await this.getStudent(studentId);
-      const student = await prisma.student.update({
-        where: { id: studentId },
-        data: { status: 'active', deletedAt: null },
-        include: {
-          class: true,
-          learningProfiles: { orderBy: { updatedAt: 'desc' }, take: 1 }
+      const existing = await prisma.student.findUnique({ where: { id: studentId }, select: { userId: true } });
+      if (!existing) throw createHttpError(404, 'NOT_FOUND', '学生不存在');
+      const student = await prisma.$transaction(async (tx) => {
+        const updated = await tx.student.update({
+          where: { id: studentId },
+          data: { status: 'active', deletedAt: null },
+          include: {
+            class: true,
+            user: true,
+            learningProfiles: { orderBy: { updatedAt: 'desc' }, take: 1 }
+          }
+        });
+        if (existing.userId) {
+          await tx.user.update({ where: { id: existing.userId }, data: { status: 'active' } });
+          updated.user.status = 'active';
         }
+        return updated;
       });
       return normalizeStudent(student);
     }

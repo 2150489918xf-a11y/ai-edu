@@ -24,9 +24,11 @@ function normalizeClass(item) {
     grade: item.grade,
     subject: item.subject,
     teacherId: item.teacherId,
+    teacherName: item.teacher?.name || '',
     status: item.status,
     deletedAt: item.deletedAt ? item.deletedAt.toISOString() : null,
     studentCount: item._count?.students ?? item.studentCount ?? 0,
+    sessionCount: item._count?.sessions ?? item.sessionCount ?? 0,
     createdAt: item.createdAt?.toISOString?.() || item.createdAt,
     updatedAt: item.updatedAt?.toISOString?.() || item.updatedAt
   };
@@ -60,7 +62,10 @@ export function createClassService(prisma) {
       const [classes, total] = await Promise.all([
         prisma.class.findMany({
           where,
-          include: { _count: { select: { students: true } } },
+          include: {
+            teacher: true,
+            _count: { select: { students: true, sessions: true } }
+          },
           orderBy: [{ updatedAt: 'desc' }],
           skip: (page - 1) * pageSize,
           take: pageSize
@@ -84,7 +89,10 @@ export function createClassService(prisma) {
           subject: normalizeText(payload.subject),
           teacherId: normalizeText(payload.teacherId) || null
         },
-        include: { _count: { select: { students: true } } }
+        include: {
+          teacher: true,
+          _count: { select: { students: true, sessions: true } }
+        }
       });
 
       return normalizeClass(item);
@@ -93,7 +101,10 @@ export function createClassService(prisma) {
     async getClass(classId) {
       const item = await prisma.class.findUnique({
         where: { id: classId },
-        include: { _count: { select: { students: true } } }
+        include: {
+          teacher: true,
+          _count: { select: { students: true, sessions: true } }
+        }
       });
       if (!item) throw createHttpError(404, 'NOT_FOUND', '班级不存在');
       return normalizeClass(item);
@@ -117,7 +128,10 @@ export function createClassService(prisma) {
       const item = await prisma.class.update({
         where: { id: classId },
         data,
-        include: { _count: { select: { students: true } } }
+        include: {
+          teacher: true,
+          _count: { select: { students: true, sessions: true } }
+        }
       });
 
       return normalizeClass(item);
@@ -125,10 +139,28 @@ export function createClassService(prisma) {
 
     async archiveClass(classId) {
       await this.getClass(classId);
+      const [activeStudentCount, activeSessionCount] = await Promise.all([
+        prisma.student.count({ where: { classId, status: 'active' } }),
+        prisma.classroomSession.count({
+          where: {
+            classId,
+            status: { notIn: ['archived', 'completed', 'ended'] }
+          }
+        })
+      ]);
+      if (activeStudentCount > 0 || activeSessionCount > 0) {
+        throw createHttpError(409, 'CLASS_NOT_EMPTY', '班级仍有有效学生或课堂，请先完成迁移和处理', {
+          activeStudentCount,
+          activeSessionCount
+        });
+      }
       const item = await prisma.class.update({
         where: { id: classId },
         data: { status: 'archived', deletedAt: new Date() },
-        include: { _count: { select: { students: true } } }
+        include: {
+          teacher: true,
+          _count: { select: { students: true, sessions: true } }
+        }
       });
       return normalizeClass(item);
     },
@@ -138,7 +170,10 @@ export function createClassService(prisma) {
       const item = await prisma.class.update({
         where: { id: classId },
         data: { status: 'active', deletedAt: null },
-        include: { _count: { select: { students: true } } }
+        include: {
+          teacher: true,
+          _count: { select: { students: true, sessions: true } }
+        }
       });
       return normalizeClass(item);
     }
