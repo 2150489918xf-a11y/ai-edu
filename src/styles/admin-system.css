@@ -1,4 +1,6 @@
-.admin-system-shell {
+.admin-system-shell,
+.admin-drawer-layer,
+.admin-dialog-layer {
   --admin-sidebar: #18352d;
   --admin-sidebar-hover: #24483d;
   --admin-accent: #267a59;
@@ -9,13 +11,16 @@
   --admin-text: #1e2925;
   --admin-muted: #68746f;
   --admin-danger: #b43c3c;
+  color: var(--admin-text);
+  font-family: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+.admin-system-shell {
   display: grid;
   grid-template-columns: 15rem minmax(0, 1fr);
   width: 100%;
   min-height: 100dvh;
   background: var(--admin-bg);
-  color: var(--admin-text);
-  font-family: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
 }
 
 .admin-system-shell *,
@@ -138,7 +143,10 @@
   cursor: pointer;
 }
 
-.admin-workspace { min-width: 0; }
+.admin-workspace {
+  min-width: 0;
+  overflow-x: hidden;
+}
 .admin-topbar {
   position: sticky;
   z-index: 10;
