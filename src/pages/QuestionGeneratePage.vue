@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import AiChat from '../components/AiChat.vue';
 import { parseQuestionsFromAiText } from '../data/aiQuestionParser';
 import { createQuestion, generateAiQuestions, getQuestionBank, streamAiQuestions } from '../data/questionBankApiClient';
+import { fetchCourseAnalysisReportContext } from '../data/courseAnalysisApiClient.js';
 import { getAnsweredCourseQuestions, getBank, notify, store } from '../data/mockStore';
 
 const route = useRoute();
@@ -13,6 +14,8 @@ const saving = ref(false);
 const selected = ref([]);
 const candidateQuestions = ref([]);
 const currentBank = ref(getBank(route.params.bankId));
+const analysisReportId = ref(String(route.query.analysisReportId || ''));
+const analysisReportContext = ref(null);
 const selectedAnalysisId = ref('newton-q3');
 const editingQuestionId = ref('');
 const aiMessages = ref([
@@ -173,6 +176,7 @@ function buildAiRequest(text, mode) {
   return {
     prompt: text,
     mode,
+    analysisReportId: analysisReportId.value || undefined,
     analysis: {
       id: selectedAnalysisId.value,
       title: selectedAnalysisQuestion.value?.title || '',
@@ -302,7 +306,23 @@ async function loadBank() {
   }
 }
 
-onMounted(loadBank);
+async function loadAnalysisReportContext() {
+  analysisReportId.value = String(route.query.analysisReportId || '');
+  if (!analysisReportId.value) { analysisReportContext.value = null; return; }
+  try {
+    analysisReportContext.value = await fetchCourseAnalysisReportContext(analysisReportId.value);
+  } catch (error) {
+    analysisReportContext.value = null;
+    notify(error.message || '引用的学情报告加载失败');
+  }
+}
+
+function removeAnalysisReportReference() {
+  analysisReportId.value = '';
+  analysisReportContext.value = null;
+}
+
+onMounted(() => { loadBank(); loadAnalysisReportContext(); });
 watch(() => route.params.bankId, loadBank);
 </script>
 
@@ -327,6 +347,11 @@ watch(() => route.params.bankId, loadBank);
 
     <section class="ai-question-layout">
       <article class="surface-card generate-form">
+        <div v-if="analysisReportContext" class="analysis-reference-chip">
+          <span class="material-symbols-outlined">insights</span>
+          <div><strong>已引用学情报告</strong><p>{{ analysisReportContext.course?.title }} · 将按薄弱点生成题目</p></div>
+          <button type="button" aria-label="移除学情报告引用" @click="removeAnalysisReportReference"><span class="material-symbols-outlined">close</span></button>
+        </div>
         <span class="small-chip">生成设置</span>
         <label class="form-label">引用学情分析</label>
         <div class="analysis-reference">
@@ -453,6 +478,7 @@ watch(() => route.params.bankId, loadBank);
 </template>
 
 <style scoped>
+.analysis-reference-chip{display:grid;grid-template-columns:28px 1fr 32px;align-items:center;gap:10px;margin-bottom:14px;border:1px solid rgba(31,181,95,.28);border-radius:12px;background:#edf8f1;padding:11px;color:#177c46}.analysis-reference-chip p{margin-top:3px;color:var(--muted);font-size:11px}.analysis-reference-chip>button{width:30px;height:30px;border:0;border-radius:50%;background:#fff;color:var(--muted)}
 .question-page :deep(.module-head h1) {
   font-family: var(--font-serif);
   font-weight: 800;

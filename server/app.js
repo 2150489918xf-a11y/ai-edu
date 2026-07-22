@@ -686,10 +686,17 @@ export function createLearningApiApp({
       if (questionBankService && aiQuestionService && req.method === 'POST' && aiQuestionGenerateMatch) {
         const bank = await questionBankService.getBank(decodeURIComponent(aiQuestionGenerateMatch[1]));
         const body = await readJsonBody(req);
+        const analysisContext = body.analysisReportId && courseAnalysisService
+          ? await courseAnalysisService.getReportContext(body.analysisReportId)
+          : null;
         const data = await aiQuestionService.generateQuestions({
           bank,
           prompt: body.prompt || '',
           analysis: body.analysis || {},
+          analysisContext,
+          mode: body.mode || 'generate',
+          candidateQuestions: body.candidateQuestions || [],
+          editingQuestion: body.editingQuestion || null,
           messages: body.messages || []
         });
         sendJson(res, 200, { data });
@@ -700,6 +707,9 @@ export function createLearningApiApp({
       if (questionBankService && aiQuestionService && req.method === 'POST' && aiQuestionStreamMatch) {
         const bank = await questionBankService.getBank(decodeURIComponent(aiQuestionStreamMatch[1]));
         const body = await readJsonBody(req);
+        const analysisContext = body.analysisReportId && courseAnalysisService
+          ? await courseAnalysisService.getReportContext(body.analysisReportId)
+          : null;
         startSse(res);
         try {
           await aiQuestionService.streamQuestions({
@@ -707,6 +717,7 @@ export function createLearningApiApp({
             prompt: body.prompt || '',
             mode: body.mode || 'generate',
             analysis: body.analysis || {},
+            analysisContext,
             candidateQuestions: body.candidateQuestions || [],
             editingQuestion: body.editingQuestion || null,
             messages: body.messages || []

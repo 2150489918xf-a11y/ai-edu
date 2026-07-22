@@ -50,7 +50,7 @@ function buildSystemPrompt() {
   ].join('\n');
 }
 
-function buildUserPrompt({ bank = {}, prompt = '', analysis = {}, candidateQuestions = [], editingQuestion = null, mode = 'generate' }) {
+function buildUserPrompt({ bank = {}, prompt = '', analysis = {}, analysisContext = null, candidateQuestions = [], editingQuestion = null, mode = 'generate' }) {
   return [
     `题库：${bank.title || '当前题库'}`,
     `学科：${bank.subject || '未提供'}`,
@@ -60,6 +60,8 @@ function buildUserPrompt({ bank = {}, prompt = '', analysis = {}, candidateQuest
     `教师要求：${prompt || '生成适合当前题库的课堂检测题'}`,
     '引用学情：',
     JSON.stringify(analysis || {}, null, 2),
+    '课程学情报告（来自服务端持久化报告，优先用于确定知识点、难度和题型）：',
+    JSON.stringify(analysisContext || {}, null, 2),
     '当前候选题：',
     JSON.stringify(candidateQuestions || [], null, 2),
     '正在编辑的题目：',
