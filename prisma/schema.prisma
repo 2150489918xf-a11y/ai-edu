@@ -112,10 +112,38 @@ model Course {
   studentEnrollments  StudentCourseEnrollment[]
   learningProfiles    LearningProfile[]
   parentSummaries     ParentSummary[]
+  analysisReports     CourseAnalysisReport[]
   createdAt           DateTime                  @default(now()) @map("created_at")
   updatedAt           DateTime                  @updatedAt @map("updated_at")
 
   @@map("courses")
+}
+
+model CourseAnalysisReport {
+  id                  String   @id @default(uuid())
+  courseId            String   @map("course_id")
+  course              Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  scopeType           String   @map("scope_type")
+  scopeKey            String   @map("scope_key")
+  classId             String?  @map("class_id")
+  sessionId           String?  @map("session_id")
+  sourceFingerprint   String   @map("source_fingerprint")
+  sourceAnswerCount   Int      @default(0) @map("source_answer_count")
+  sourceQuestionCount Int      @default(0) @map("source_question_count")
+  summary             Json     @default("{}")
+  weakPoints          Json     @default("[]") @map("weak_points")
+  teachingSuggestions Json     @default("[]") @map("teaching_suggestions")
+  practiceSuggestions Json     @default("{}") @map("practice_suggestions")
+  rawText             String?  @map("raw_text")
+  provider            String
+  model               String
+  generatedAt         DateTime @default(now()) @map("generated_at")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@unique([courseId, scopeKey])
+  @@index([courseId, scopeType])
+  @@map("course_analysis_reports")
 }
 
 model CourseGroup {
