@@ -11,7 +11,10 @@ assert.match(
   'teleported drawers and dialogs must inherit the complete admin theme variables'
 );
 assert.match(styles, /\.admin-workspace\s*\{[^}]*overflow-x:\s*hidden/s);
+assert.match(styles, /\.admin-workspace\s*\{[^}]*height:\s*100dvh[^}]*overflow-y:\s*auto/s);
 assert.match(styles, /\.admin-table-wrap\s*\{[^}]*overflow-x:\s*auto/s);
+assert.match(styles, /\.admin-student-filters\s*\{[^}]*flex-wrap:\s*nowrap/s);
+assert.match(styles, /\.admin-student-filters\s+\.admin-search\s*\{[^}]*flex:\s*1\s+1\s+20rem/s);
 assert.ok(styles.includes('min-height: 2.75rem'));
 assert.ok(styles.includes('@media (max-width: 1023px)'));
 assert.ok(styles.includes('@media (max-width: 767px)'));

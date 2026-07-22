@@ -103,7 +103,7 @@ onBeforeUnmount(() => window.removeEventListener('admin:refresh', handleRefresh)
     <header class="admin-page-header"><div><h2>学生档案与账号</h2><p>管理学生学号、登录账号和班级归属。</p></div><button class="admin-button" type="button" @click="openCreate"><span class="material-symbols-outlined">add</span>新增学生</button></header>
     <p v-if="notice" class="admin-notice">{{ notice }}</p><p v-if="error && !loading" class="admin-notice is-error">{{ error }}</p>
     <section class="admin-panel">
-      <form class="admin-toolbar" @submit.prevent="search"><div class="admin-filters">
+      <form class="admin-toolbar" @submit.prevent="search"><div class="admin-filters admin-student-filters">
         <label class="admin-search"><span class="material-symbols-outlined">search</span><input v-model="keyword" class="admin-input" placeholder="姓名、学号或账号" /></label>
         <select v-model="classId" class="admin-select" @change="search"><option value="">全部班级</option><option v-for="item in classes" :key="item.id" :value="item.id">{{ item.name }}</option></select>
         <select v-model="status" class="admin-select" @change="search"><option value="active">正常</option><option value="archived">已停用</option><option value="all">全部状态</option></select>
