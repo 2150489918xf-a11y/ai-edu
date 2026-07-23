@@ -51,6 +51,7 @@ export function mapApiCourseToUiCourse(course) {
     materialUploaded: Boolean(course.materialUploaded),
     materialName: course.materialName || '',
     outline: course.outline || null,
+    ppt: course.ppt || null,
     goal,
     summary: course.description || '课程已创建，可继续完善大纲、课件和题目。',
     tags: [course.grade || '未分级', course.subject || '未设置', duration.replace(' 分钟', ' min')],

@@ -33,12 +33,14 @@ defineEmits(['select']);
       >
         <span class="preview-thumb">
           <img
+            v-if="slide.imageSrc !== null && !slide.generated"
             :src="slide.imageSrc || `/assets/newton-ppt/slide-${String(slide.id).padStart(2, '0')}.png`"
             :alt="`${String(slide.id).padStart(2, '0')} ${slide.label}`"
           />
+          <span v-else class="generated-thumb">{{ slide.marker || String(slide.id).padStart(2, '0') }}</span>
         </span>
         <span class="preview-meta">
-          <strong>{{ String(slide.id).padStart(2, '0') }} ・ {{ slide.label }}</strong>
+          <strong>{{ String(slide.id).padStart(2, '0') }} · {{ slide.label }}</strong>
           <small>{{ slide.title }}</small>
         </span>
       </button>
@@ -67,7 +69,6 @@ defineEmits(['select']);
   display: block;
   font-size: 18px;
   font-weight: 650;
-  letter-spacing: 0;
 }
 
 .preview-head span {
@@ -117,6 +118,18 @@ defineEmits(['select']);
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.generated-thumb {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  background: linear-gradient(135deg, var(--deep), #177043);
+  color: #7df0a0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .preview-meta {
